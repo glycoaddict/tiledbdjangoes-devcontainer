@@ -1,0 +1,3 @@
+[submodule "TileDB-VCF"]
+	path = TileDB-VCF
+	url = https://github.com/TileDB-Inc/TileDB-VCF
