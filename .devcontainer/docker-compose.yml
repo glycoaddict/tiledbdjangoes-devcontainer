@@ -1,14 +1,25 @@
-version: '4.0'
+version: '0.1'
+
 services:
   devcontainer:
     build: 
       context: ..
       dockerfile: .devcontainer/Dockerfile-py-django
-      # dockerfile: Dockerfile
     volumes:
-      - ../..:/workspaces:cached      
-    network_mode: service:db
+      - ../..:/workspaces:cached 
+      - type: bind
+        source: c:/Users/choosf/Documents/SECURE/PRISM/genomicspark/data/g1000/my_vcf_dataset
+        target: /mnt/data/tileprism     
+    # network_mode: service:db
     command: sleep infinity
+    ports:
+      - "127.0.0.1:8001:8001"
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_DB: postgres    
+    depends_on:
+      - db
 
   db:
     image: postgres:latest
@@ -18,7 +29,7 @@ services:
     environment:
       POSTGRES_PASSWORD: postgres
       POSTGRES_USER: postgres
-      POSTGRES_DB: postgres
+      POSTGRES_DB: postgres    
 
-volumes:
+volumes:  
   postgres-data:
