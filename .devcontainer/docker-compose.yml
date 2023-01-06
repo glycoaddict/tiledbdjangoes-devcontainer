@@ -3,7 +3,7 @@ services:
   devcontainer:
     build: 
       context: ..
-      dockerfile: TileDB-VCF/docker/Dockerfile-py-django
+      dockerfile: .devcontainer/Dockerfile-py-django
       # dockerfile: Dockerfile
     volumes:
       - ../..:/workspaces:cached      
