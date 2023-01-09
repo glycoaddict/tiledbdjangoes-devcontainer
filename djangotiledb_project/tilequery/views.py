@@ -1,6 +1,7 @@
 from django.shortcuts import render
 from django.http import HttpResponse
 from django.contrib import messages
+from django.contrib.auth.decorators import login_required
 
 import pandas as pd
 from typing import List
@@ -24,6 +25,8 @@ VCF_TRANSLATE = {
 }
 
 # Create your views here.
+
+@login_required
 def index(request, methods=['GET', 'POST']): 
 
     def return_with_error(e:Exception, query_summary=None):
@@ -40,7 +43,7 @@ def index(request, methods=['GET', 'POST']):
         if all([x=='' for x in regions]) and (all([x=='' for x in samples]) if samples else True):
             w  = '<_query_tiledb> regions:List[str] must not be empty strings. Returning the possible samples and attributes you may query.'
             e = ValueError(w)
-            df_help = _help_tiledb()             
+            df_help = _help_tiledb(request)             
             return return_with_error(e, query_summary=df_help.style.pipe(style_result_dataframe).render())       
         elif all([x=='' for x in regions]):
             regions = pathogenic_vars            
@@ -51,7 +54,7 @@ def index(request, methods=['GET', 'POST']):
         # print((regions), (samples), (attrs))
         
         try:
-            df = _query_tiledb(regions=regions, samples=samples, attrs=attrs)
+            df = _query_tiledb(request, regions=regions, samples=samples, attrs=attrs)
             df.index.name = 'S/N'
         except Exception as e:
             return return_with_error(e, query_summary=query_summary.style.pipe(style_result_dataframe).render())
@@ -90,7 +93,9 @@ def index(request, methods=['GET', 'POST']):
 #         df = self.ds.read(attrs=attrs, regions=regions, samples=samples)
 #         return df
 
-def _query_tiledb(regions:List[str],
+@login_required
+def _query_tiledb(request,
+                  regions:List[str],
                   samples:List[str],
                   attrs:List[str]=['sample_name', 'alleles', 'fmt_GT', 'contig', 'pos_start'],
                 #   attrs:Union[None, List[str]]=['sample_name', 'alleles', 'fmt_GT', 'contig', 'pos_start'], 
@@ -110,16 +115,19 @@ def _query_tiledb(regions:List[str],
     #     raise ValueError(w)
     return df
 
-def _help_tiledb(uri:str=URI, 
-                  memory_budget_mb:int=MEMORY_BUDGET_MB) -> pd.DataFrame:
+@login_required
+def _help_tiledb(request,
+                 uri:str=URI, 
+                 memory_budget_mb:int=MEMORY_BUDGET_MB) -> pd.DataFrame:
     cfg = tv.ReadConfig(memory_budget_mb=memory_budget_mb)
     ds = tv.Dataset(uri, mode='r', cfg=cfg, verbose=True) 
 
     composer = [f'{",".join(ds.attributes())}', f'{",".join(ds.samples())}']
     
     return pd.DataFrame(composer, columns=['property'], index=['attributes', 'samples'])
-    
-    
+ 
+
+
 
 ###### STYLERS #################################
 cell_hover = {  # for row hover use <tr> instead of <td>
@@ -145,3 +153,6 @@ def dataframe_common_final_reformat(df):
     return xdf
 
 #######################################
+
+
+
