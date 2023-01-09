@@ -1,6 +1,9 @@
 {% extends "tilequery/base.html" %}
 
 {% block content %}
-  <p>Logged out!</p>
-  <a href="{% url 'login'%}">Click here to login again.</a>
+<div class="container">
+  <p class="p">Logged out!
+    <a href="{% url 'login'%}">Click here to login again.</a>
+  </p>
+</div>
 {% endblock %}

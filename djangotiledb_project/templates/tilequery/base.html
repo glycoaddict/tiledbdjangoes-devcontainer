@@ -1,8 +1,13 @@
 {% load static %}
 <!doctype html>
-<title>{% block title %}{% endblock %}GenomicDB</title>
-<link rel="stylesheet" href="{% static 'css/bootstrap.css' %}">
-<script src="{% static 'js/bootstrap.js' %}"></script>
+<html>
+  <head>
+    <title>{% block title %}{% endblock %}GenomicDB</title>
+    <link rel="stylesheet" href="{% static 'css/bootstrap.css' %}">
+    <script src="{% static 'js/bootstrap.js' %}"></script>
+    <link rel="icon" type="image/x-icon" href="{% static 'img/genomicsDBquerylogo1small.png' %}">
+  </head>
+
 
 <section class="content">
   
@@ -42,4 +47,5 @@
   {% block content %}{% endblock %}
 </section>
 
+</html>
 {% block scripts %}{% endblock %}
