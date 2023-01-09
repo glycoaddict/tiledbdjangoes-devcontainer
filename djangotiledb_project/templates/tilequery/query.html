@@ -4,13 +4,13 @@
 <div class="container">
         <h1>Genomics Query</h1>
         <form action="" method="post" name="query">{% csrf_token %}
-            <label for="regions" class=""label">regions</label>
+            <label for="regions" class="label">regions</label>
             <input type="text" name="regions" />
-            <label for="samples" class=""label">samples</label>
+            <label for="samples" class="label">samples</label>
             <input type="text" name="samples" />
-            <label for="attributes" class=""label">attributes</label>
+            <label for="attributes" class="label">attributes</label>
             <input type="text" name="attrs" value="sample_name,alleles,fmt_GT,contig,pos_start,pos_end,info_AF" />
-            <button class=""button" type="submit" name="submit">Submit</button>
+            <button class="btn btn-primary me-2" type="submit" name="submit">Submit</button>
             
         </form>
         {% if query_summary %}

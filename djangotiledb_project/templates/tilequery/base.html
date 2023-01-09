@@ -1,0 +1,45 @@
+{% load static %}
+<!doctype html>
+<title>{% block title %}{% endblock %}GenomicDB</title>
+<link rel="stylesheet" href="{% static 'css/bootstrap.css' %}">
+<script src="{% static 'js/bootstrap.js' %}"></script>
+
+<section class="content">
+  
+
+    <div class="container">
+      <header class="d-flex flex-wrap align-items-center justify-content-center justify-content-md-between py-3 mb-4 border-bottom">
+        <a href="/" class="d-flex align-items-center col-md-3 mb-2 mb-md-0 text-dark text-decoration-none">
+          <!-- <svg class="bi me-2" width="40" height="32" role="img" aria-label="GenomicsDB"><use xlink:href="#bootstrap"></use></svg> -->
+          <img class="bi me-2" src="{% static 'img/genomicsDBquerylogo1small.png' %}" height="32" />
+        </a>
+  
+        <ul class="nav col-12 col-md-auto mb-2 justify-content-center mb-md-0">
+          <li><a href="/query/" class="nav-link px-2 link-dark">Query</a></li>
+          <li><a href="/admin" class="nav-link px-2 link-dark">Admin</a></li>
+        </ul>
+  
+        <div class="col-md-3 text-end">   
+          <ul class="nav col-12 col-md-auto mb-2 justify-content-center mb-md-0">
+            {% if user.is_authenticated %}
+            <li><button type="button" class="btn btn-outline-disabled me-2">User: {{ user.get_username }}</button></li>
+            <li><button type="button" class="btn btn-outline-primary me-2" onclick="location.href=`{% url 'logout' %}`">Logout</button></li>
+            {% else %}
+            <li><button type="button" class="btn btn-outline-primary me-2" onclick="location.href=`{% url 'login' %}`">Login</button></li>
+            {% endif %}
+          </ul>       
+        </div>
+
+        {% block header %}    
+        {% endblock %}
+      </header>
+    </div>
+
+  {% for message in messages %}
+    <div class="alert alert-danger" role="alert">{{ message }}</div>
+  {% endfor %}  
+
+  {% block content %}{% endblock %}
+</section>
+
+{% block scripts %}{% endblock %}
