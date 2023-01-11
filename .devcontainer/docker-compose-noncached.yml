@@ -7,7 +7,7 @@ services:
     #   context: ..
     #   dockerfile: .devcontainer/Dockerfile-py-django
     volumes:
-      - ../..:/workspaces
+      - ../..:/workspaces:cached
       - type: bind
         source: c:/Users/choosf/Documents/SECURE/PRISM/genomicspark/data/g1000/my_vcf_dataset
         # source: /mnt/prismdb/prismrawstore/02_genetic/data/tileprism/

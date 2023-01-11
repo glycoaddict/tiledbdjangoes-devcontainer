@@ -11,9 +11,9 @@ services:
         source: c:/Users/choosf/Documents/SECURE/PRISM/genomicspark/data/g1000/my_vcf_dataset
         target: /mnt/data/tileprism     
     # network_mode: service:db
-    # command: sleep infinity
+    command: ["sleep", "infinity"]
     ports:
-      # - "127.0.0.1:8001:8001"
-      - "127.0.0.1:80:80"
+      - "127.0.0.1:8000:8000"
+      # - "127.0.0.1:80:80"
     env_file:
       - .env.dev
