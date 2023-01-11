@@ -94,7 +94,10 @@ RUN python setup.py install
 
 RUN rm -r /tmp/TileDB-VCF
 
-WORKDIR /workspaces/devcontainer/djangotiledb_project/
+WORKDIR /workspaces/devcontainer/
+COPY ./djangotiledb_project djangotiledb_project/
+
+# WORKDIR /workspaces/devcontainer/djangotiledb_project/
 # WORKDIR /
 CMD ["bash"]
 
