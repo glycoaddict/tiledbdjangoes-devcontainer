@@ -1,4 +1,4 @@
-version: '3'
+version: '4'
 
 services:
   devcontainer:
@@ -17,3 +17,21 @@ services:
       # - "127.0.0.1:80:80"
     env_file:
       - .env.dev
+    depends_on:
+      - anno-db
+
+  anno-db:
+    image: postgres
+    restart: always
+    environment:
+      POSTGRES_DB: annodb
+      POSTGRES_USER: prism1
+      POSTGRES_PASSWORD: iDvbooTZ7NkASZAlTL9k
+    # ports:
+    #   - "5432:5432"
+    volumes:
+      - ../postgres_data:/var/lib/postgresql/data/
+    
+# volumes:
+#   postgres_data:
+
