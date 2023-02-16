@@ -4,11 +4,21 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 
 import pandas as pd
+import numpy as np
 from typing import List
 import warnings
 import configparser
 import tiledbvcf as tv
+import json
+import re
+import logging
 
+from annoquery.models import Clinvars, Snps, Genes
+from .utils.genotypeops import rowloop_index_a_with_b
+
+
+logger = logging.getLogger('django')
+logger.setLevel(logging.INFO)
 
 config = configparser.ConfigParser()
 config.read('staticfiles/tilequery/config.ini')
@@ -24,6 +34,22 @@ VCF_TRANSLATE = {
     'fmt_GT':'Genotype',
 }
 
+QUERY_OPTION = 'tilequery/query.html'
+
+CHR_DICT_STR_TO_INT = {'chr1': 1, 'chr2': 2, 'chr3': 3, 
+                       'chr4': 4, 'chr5': 5, 'chr6': 6, 
+                       'chr7': 7, 'chr8': 8, 'chr9': 9, 
+                       'chr10': 10, 'chr11': 11, 'chr12': 12, 
+                       'chr13': 13, 'chr14': 14, 'chr15': 15, 
+                       'chr16': 16, 'chr17': 17, 'chr18': 18, 
+                       'chr19': 19, 'chr20': 20, 'chr21': 21, 
+                       'chr22': 22, 'chrX': 23, 'chrY': 24}
+
+CLINVAR_FIELDS = [f.name for f in Clinvars._meta.get_fields()]
+
+CLINVAR_SEARCH_LIMIT = 20
+
+
 # Create your views here.
 
 @login_required
@@ -33,7 +59,7 @@ def index(request, methods=['GET', 'POST']):
             warnings.warn(e.__str__())
             messages.add_message(request, messages.WARNING, e.__str__())
             context=dict(query_summary=query_summary)
-            return render(request, 'tilequery/query.html', context)
+            return render(request, QUERY_OPTION, context)
     
     if request.method == 'POST':        
         
@@ -63,19 +89,29 @@ def index(request, methods=['GET', 'POST']):
         # if 'pos_start' in df.columns and 'pos_end' in df.columns:
         #     answer_regions = df.loc[:, ['contig', 'pos_start', 'pos_end']]
         #     query_regions = pd.DataFrame([re.split(r':|-', x)[1:] for x in regions], columns=['q_contig', 'q_pos_start', 'q_pos_end'])
-            
+
+        # this dummy is needed just as a placeholder for now.
+        df_as_json = """[
+    { id: 1, name: 'John Doe', email: 'johndoe@example.com', country: 'United States' },
+    { id: 2, name: 'Jane Smith', email: 'janesmith@example.com', country: 'Canada' },
+    { id: 3, name: 'Bob Johnson', email: 'bobjohnson@example.com', country: 'United Kingdom' },
+]"""
+        # df_as_json = df.to_json()
+        
         df = dataframe_common_final_reformat(df)
 
         ### STYLE ####
         # final_content = df.to_html(classes=['table'], justify='center')
         # final_content = df.style.pipe(style_result_dataframe).to_html()        
-        final_content = df.style.pipe(style_result_dataframe).render()
+        final_content = df.style.pipe(style_result_dataframe).to_html()
         ##############
-        context =  dict(answer=final_content, query_summary=query_summary.style.pipe(style_result_dataframe).render())
-        return render(request, 'tilequery/query.html', context)
+        context =  dict(answer=final_content, query_summary=query_summary.style.pipe(style_result_dataframe).to_html(), 
+                        rows=df_as_json,
+                        )
+        return render(request, QUERY_OPTION, context)
         
     else:            
-        return render(request, 'tilequery/query.html')    
+        return render(request, QUERY_OPTION)    
 
 # class tiledb:
 #     def __init__(self, uri:str=URI, memory_budget_mb:int=MEMORY_BUDGET_MB) -> None:
@@ -97,18 +133,20 @@ def index(request, methods=['GET', 'POST']):
 def _query_tiledb(request,
                   regions:List[str],
                   samples:List[str],
-                  attrs:List[str]=['sample_name', 'alleles', 'fmt_GT', 'contig', 'pos_start'],
+                  attrs:List[str]=['sample_name', 'id', 'alleles', 'fmt_GT', 'contig', 'pos_start', 'pos_end', 'info_AF'],
                 #   attrs:Union[None, List[str]]=['sample_name', 'alleles', 'fmt_GT', 'contig', 'pos_start'], 
                   uri:str=URI, 
                   memory_budget_mb:int=MEMORY_BUDGET_MB)->pd.DataFrame:
-
     # if regions and sample are empty, return error
     # if regions empty but sample not empty, substitute the pathogenic var list.
     # if regions specified and sample specified, proceed as normal to extract all samples.
     
     cfg = tv.ReadConfig(memory_budget_mb=memory_budget_mb)
-    ds = tv.Dataset(uri, mode='r', cfg=cfg, verbose=True)   
+    ds = tv.Dataset(uri, mode='r', cfg=cfg, verbose=False)   
     df = ds.read(attrs=attrs, regions=regions, samples=samples)
+
+    if df.shape[0] > 0:
+        df = _append_tiledb_with_annotation(df)
     
     # if all([x=='' for x in regions]):   
     #     w  = '<_query_tiledb> regions:List[str] must not be empty strings'
@@ -127,6 +165,125 @@ def _help_tiledb(request,
     return pd.DataFrame(composer, columns=['property'], index=['attributes', 'samples'])
  
 
+def _append_tiledb_with_annotation(df, 
+                                   chromosome_label =   'contig', 
+                                   start_label      =   'pos_start',
+                                   stop_label      =   'pos_end',
+                                   genotype_label   =   'fmt_GT',
+                                   allele_label     =   'alleles',
+                                   show_only_alt    =   True,
+                                   ):
+    """Needs at least the [chr, start, stop, genotype[0,1], allele[A,T]]. For the given dataframe
+    of variants, append with the annotations from clinvar, dbsnp, refgene.
+
+    `show_only_alt` == True : means that variants with genotype [0 0] will be discarded automatically
+    """    
+    # get unique set of chr,start,stop,allele, which may be greater 
+    # than the inputted search because of multiple hits or different
+    # alleles.
+
+    # res_df_gene = pd.DataFrame(np.nan, index=df.index, columns=['gene_symbol','gene_product'])
+
+    # do gene search which doesn't need the allele explosion operation. so may have to skip some rows. could skip based on the index.
+    # NB this is SLOW. faster way would be to find a super set of the region being queried, get a list of all the genes
+    # in that region, then match region to gene. That way I only query the database once!
+    def genelist_lookup_inside_loop(row:pd.Series):        
+        gene_hit_items = Genes.objects.filter(chromosome=row.loc['chr_int'],
+                                              start__lte=row.loc[start_label],
+                                              stop__gte=row.loc[stop_label],
+                                              )
+        gene_hit = gene_hit_items.first()        
+        return [gene_hit.gene, gene_hit.product] if gene_hit else [np.nan, np.nan]
+
+    def search_for_snp_and_clinvar(s:pd.Series):
+        logger.info(f'search_for_snp_and_clinvar:input `s`: {s.shape}')
+        snp_hits = list(Snps.objects.filter(chr=s.loc[chromosome_label],
+                               start=s.loc[start_label],
+                               stop=s.loc[stop_label],
+                               alt=s.loc['alt_allele']
+                               ))
+        logger.info(f'search_for_snp_and_clinvar: snp_hits length: {len(snp_hits)}')
+        
+        # for now, just take the first hit. May decide to change in future.
+        if snp_hits:
+            snp = snp_hits[0]
+        else:
+            snp = '-'
+            
+        clinvar_hits = list(Clinvars.objects.filter(
+            chromosome=s.loc['chr_int'],
+            start=s.loc[start_label],
+            stop=s.loc[stop_label],
+            alternateallelevcf=s.loc['alt_allele'],
+        ))
+        logger.info(f'search_for_snp_and_clinvar: clinvar_hits length: {len(clinvar_hits)}')
+        
+        if clinvar_hits:
+            clin = [clinvar_hits[0].id, clinvar_hits[0].alleleid, clinvar_hits[0].type, 
+                    clinvar_hits[0].name, clinvar_hits[0].geneid, clinvar_hits[0].genesymbol, 
+                    clinvar_hits[0].hgnc_id, clinvar_hits[0].clinicalsignificance, clinvar_hits[0].clinsigsimple, 
+                    clinvar_hits[0].lastevaluated, clinvar_hits[0].rsid, clinvar_hits[0].nsvesv, 
+                    clinvar_hits[0].rcvaccession, clinvar_hits[0].phenotypeids, clinvar_hits[0].phenotypelist, 
+                    clinvar_hits[0].origin, clinvar_hits[0].originsimple, clinvar_hits[0].assembly, 
+                    clinvar_hits[0].chromosomeaccession, clinvar_hits[0].chromosome, clinvar_hits[0].start, clinvar_hits[0].stop, 
+                    clinvar_hits[0].referenceallele, clinvar_hits[0].alternateallele, clinvar_hits[0].cytogenetic, 
+                    clinvar_hits[0].reviewstatus, clinvar_hits[0].numbersubmitters, clinvar_hits[0].guidelines, 
+                    clinvar_hits[0].testedingtr, clinvar_hits[0].otherids, clinvar_hits[0].submittercategories,
+                    clinvar_hits[0].variationid, clinvar_hits[0].positionvcf, clinvar_hits[0].referenceallelevcf,
+                    clinvar_hits[0].alternateallelevcf, clinvar_hits[0].order]
+        else:
+            clin = ['-'] * len(CLINVAR_FIELDS)
+        return [snp] + clin
+
+    df = df.copy()
+
+    # parse the alleles and GT into set of alt genotypes, padding extra cells with with np.nan
+    # gts = convert_pd_series_of_arrays_to_padded_np_array(df.loc[:, genotype_label])
+    # als = convert_pd_series_of_arrays_to_padded_np_array(df.loc[:, allele_label])
+    alt_allele_lists = df.apply(rowloop_index_a_with_b, axis=1, a_label=allele_label, b_label=genotype_label)
+
+    df['alt_allele'] = alt_allele_lists
+
+    ### remove rows with NO ALT GENOTYPE. The assumption is that it will be a normal phenotype so not interesting
+    if show_only_alt:
+        df.dropna(axis=0, how='any', subset='alt_allele', inplace=True)
+        if df.shape[0] == 0: return df
+        
+    
+    df['chr_int'] = df.loc[:, chromosome_label].map(CHR_DICT_STR_TO_INT)
+    
+    # gene_hit_names = np.array([g.gene for g in gene_hit_items])
+    # unique_hits, indices, counts = np.unique(gene_hit_names, return_index=True, return_counts=True)
+    # count_sorted_index = np.argsort(counts)            
+    # return [gene_hit_items[int(count_sorted_index[-1])].gene, gene_hit_items[int(count_sorted_index[-1])].product,]
+
+    res_df_gene = pd.DataFrame(
+        df.apply(genelist_lookup_inside_loop, axis=1, result_type='expand').values,
+        columns=['gene','product']
+        )
+
+    logger.info('res_df_gene done')
+
+    df = pd.concat([df, res_df_gene], axis=1)
+    
+    # explodes more than one nonzero allele to multiple lines, because rsid and clinvar search will require the alt allele
+    df = df.explode(['alt_allele']).reset_index(drop=True)
+
+    # apply a search limit so as not to make the user wait for so long, and also avoid a mistakenly large query.
+    snp_clinvar_result = pd.DataFrame(df.iloc[:CLINVAR_SEARCH_LIMIT].apply(search_for_snp_and_clinvar, axis=1, result_type='expand').values,
+                                      columns=['rsid'] + CLINVAR_FIELDS)
+
+    logger.info('snp_clinvar_result done')
+    df = pd.concat([df, snp_clinvar_result], axis=1)
+
+    
+    return df
+
+
+###### UTILS ###################################
+
+def convert_pd_series_of_arrays_to_padded_np_array(s:pd.Series, fillna_value=np.nan):
+    return pd.DataFrame(s.tolist()).fillna(fillna_value).to_numpy()
 
 
 ###### STYLERS #################################

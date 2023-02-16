@@ -85,7 +85,7 @@ RUN ldconfig
 # install postgresql
 RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends libpq-dev postgresql-client
 
-RUN pip install --no-cache-dir Django==4.1.3 Jinja2==3.1.2 psycopg2==2.9.5
+RUN pip install --no-cache-dir Django==4.1.3 Jinja2==3.1.2 psycopg2==2.9.5 djangorestframework==3.14
 
 # Build TileDB-VCF
 WORKDIR /tmp
@@ -96,6 +96,8 @@ WORKDIR /tmp/TileDB-VCF/apis/python
 RUN python setup.py install
 
 RUN rm -r /tmp/TileDB-VCF
+
+# RUN pip install
 
 WORKDIR /workspaces/devcontainer/djangotiledb_project/
 # WORKDIR /
