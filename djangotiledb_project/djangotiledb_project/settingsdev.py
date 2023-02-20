@@ -125,7 +125,7 @@ LOGGING = {
     },
     'handlers': {        
         'file': {
-            'level': 'WARNING',
+            'level': 'DEBUG',
             'class': 'logging.FileHandler',
             'filename': '/workspaces/devcontainer/debug.log',
             'formatter':'standard',
@@ -141,7 +141,7 @@ LOGGING = {
     'loggers': {
         'django': {
             'handlers': ['file', 'infofile'],
-            'level': 'INFO',
+            'level': 'DEBUG',
             'propagate': True,
         },
     },

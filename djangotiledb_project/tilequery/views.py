@@ -206,7 +206,7 @@ def _append_tiledb_with_annotation(df,
         
         # for now, just take the first hit. May decide to change in future.
         if snp_hits:
-            snp = snp_hits[0]
+            snp = snp_hits[0].rsid
         else:
             snp = '-'
             
@@ -247,7 +247,8 @@ def _append_tiledb_with_annotation(df,
     ### remove rows with NO ALT GENOTYPE. The assumption is that it will be a normal phenotype so not interesting
     if show_only_alt:
         df.dropna(axis=0, how='any', subset='alt_allele', inplace=True)
-        if df.shape[0] == 0: return df
+        if df.shape[0] == 0:
+            return df
         
     
     df['chr_int'] = df.loc[:, chromosome_label].map(CHR_DICT_STR_TO_INT)
@@ -264,7 +265,7 @@ def _append_tiledb_with_annotation(df,
 
     logger.info('res_df_gene done')
 
-    df = pd.concat([df, res_df_gene], axis=1)
+    df = pd.concat([df.reset_index(drop=True), res_df_gene], axis=1)
     
     # explodes more than one nonzero allele to multiple lines, because rsid and clinvar search will require the alt allele
     df = df.explode(['alt_allele']).reset_index(drop=True)

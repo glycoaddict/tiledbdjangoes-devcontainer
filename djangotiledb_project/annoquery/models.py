@@ -64,8 +64,7 @@ class Clinvars(models.Model):
             models.Index(fields=['chromosome','start']),
             models.Index(fields=['clinicalsignificance']),
         ]
-        
-        
+
 
 class Genes(models.Model):
     chromosome = models.IntegerField()

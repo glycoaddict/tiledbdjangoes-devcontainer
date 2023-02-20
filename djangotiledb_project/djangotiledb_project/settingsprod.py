@@ -38,6 +38,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'tilequery',    
+    'annoquery',
 ]
 
 MIDDLEWARE = [
@@ -79,8 +80,18 @@ DATABASES = {
     'default': {
         'ENGINE': 'django.db.backends.sqlite3',
         'NAME': BASE_DIR / 'db.sqlite3',
+    },
+    'annodb': {
+        'ENGINE': 'django.db.backends.postgresql',
+        'NAME': 'annodb',
+        'USER': 'prism1',
+        'PASSWORD': 'iDvbooTZ7NkASZAlTL9k',
+        'HOST': 'anno-db',
+        'PORT': '5432',
     }
 }
+
+DATABASE_ROUTERS = ['djangotiledb_project.databaserouter.AnnoRouter']
 
 
 # Password validation

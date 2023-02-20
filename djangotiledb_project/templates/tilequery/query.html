@@ -1,5 +1,9 @@
 {% extends "tilequery/base.html" %}
 {% block title %}Genomic Query{% endblock %}
+
+{% block header %}
+{% endblock %}
+
 {% block content %}
 <div class="container">
         <h1>Genomics Query</h1>
@@ -9,7 +13,7 @@
             <label for="samples" class="label">samples</label>
             <input type="text" name="samples" />
             <label for="attributes" class="label">attributes</label>
-            <input type="text" name="attrs" value="sample_name,alleles,fmt_GT,contig,pos_start,pos_end,info_AF" />
+            <input type="text" name="attrs" value="sample_name,id,alleles,fmt_GT,contig,pos_start,pos_end,info_AF" />
             <button class="btn btn-primary me-2" type="submit" name="submit">Submit</button>
             
         </form>
@@ -17,24 +21,6 @@
         <div id="query_summary">
             {{ query_summary | safe }}
 
-            <!-- <table class="table">
-                <thead>
-                    <tr style="text-align: center;">
-                        <th>Queried Regions</th>
-                        <th>Queried Samples</th>
-                        <th>Queried Attributes</th>
-                    </tr>
-                    <tbody>
-                        <tr style="text-align: center;">
-                            {% for q in query_summary %}
-                            <td>
-                                {{ q }}
-                            </td>
-                            {% endfor %}
-                        </tr>
-                    </tbody>
-                </thead>
-            </table> -->
         </div>
         {% endif %}
 
@@ -48,9 +34,11 @@
                 {{ answer | safe }}
             </div>
         </div>
-
         
         {% endif %}
+
+        {% block answer %}
+        {% endblock %}
     </div>
 {% endblock %}
 

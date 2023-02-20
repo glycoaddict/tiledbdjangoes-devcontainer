@@ -2,9 +2,10 @@ version: "3"
 
 services:
   web:
-    image: djtdb-1:latest
+    image: djtdb-dev:latest
+    restart: always
     ports:
-      - "0.0.0.0:8000:8000"
+      - "0.0.0.0:8001:8001"
       # - "8000:8000"
     volumes:
       # - ../..:/workspaces 
@@ -12,7 +13,23 @@ services:
         source: /mnt/prismdb/prismrawstore/02_genetic/data/tileprism/
         # source: c:/Users/choosf/Documents/SECURE/PRISM/genomicspark/data/g1000/my_vcf_dataset
         target: /mnt/data/tileprism  
-    command: ["sleep", "infinity"]
-    # command: "python manage.py runserver 0.0.0.0:80 &"
+    command: ["sleep", "infinity"]    
     env_file:
       - .env.dev
+    depends_on:
+      - anno-db
+
+  anno-db:
+    image: postgres:latest
+    restart: always
+    environment:
+      POSTGRES_DB: annodb
+      POSTGRES_USER: prism1
+      POSTGRES_PASSWORD: iDvbooTZ7NkASZAlTL9k
+    # ports:
+    #   - "5432:5432"
+    volumes:
+      - type: bind
+        source: ../postgres_data
+        target: /var/lib/postgresql/data/
+    
