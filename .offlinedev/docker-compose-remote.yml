@@ -5,6 +5,7 @@ services:
     image: djtdb-remote-dev:latest    
     ports:
       - "0.0.0.0:8001:8001"
+      - "0.0.0.0:8000:8000"
       # - "8000:8000"
     volumes:
       # - ../..:/workspaces 
