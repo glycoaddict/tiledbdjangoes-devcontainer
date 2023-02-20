@@ -12,6 +12,7 @@ import tiledbvcf as tv
 import json
 import re
 import logging
+import os
 
 from annoquery.models import Clinvars, Snps, Genes
 from .utils.genotypeops import rowloop_index_a_with_b
@@ -49,6 +50,22 @@ CLINVAR_FIELDS = [f.name for f in Clinvars._meta.get_fields()]
 
 CLINVAR_SEARCH_LIMIT = 20
 
+# pre-fetch the help file
+def prefetch_helper_dataset():
+    p = './DF_COMPOSER_prefetched.pkl'
+    if os.path.exists(p):
+        DF_COMPOSER = pd.read_pickle(p) 
+    else:
+        cfg = tv.ReadConfig(memory_budget_mb=MEMORY_BUDGET_MB)
+        DS = tv.Dataset(URI, mode='r', cfg=cfg, verbose=False) 
+        DF_COMPOSER = pd.DataFrame([f'{",".join(DS.attributes())}', f'{",".join(DS.samples())}'], 
+                                columns=['property'], 
+                                index=['attributes', 'samples'])
+        DF_COMPOSER.to_pickle(p)
+        
+    return DF_COMPOSER
+
+DF_COMPOSER = prefetch_helper_dataset()
 
 # Create your views here.
 
@@ -70,7 +87,7 @@ def index(request, methods=['GET', 'POST']):
             w  = '<_query_tiledb> regions:List[str] must not be empty strings. Returning the possible samples and attributes you may query.'
             e = ValueError(w)
             df_help = _help_tiledb(request)             
-            return return_with_error(e, query_summary=df_help.style.pipe(style_result_dataframe).render())       
+            return return_with_error(e, query_summary=df_help.style.pipe(style_result_dataframe).to_html())       
         elif all([x=='' for x in regions]):
             regions = pathogenic_vars            
             messages.add_message(request, messages.WARNING, 'Region unspecified but samples specified, so a list of pathogenic variants from clinvar was substituted.')
@@ -157,12 +174,14 @@ def _query_tiledb(request,
 def _help_tiledb(request,
                  uri:str=URI, 
                  memory_budget_mb:int=MEMORY_BUDGET_MB) -> pd.DataFrame:
-    cfg = tv.ReadConfig(memory_budget_mb=memory_budget_mb)
-    ds = tv.Dataset(uri, mode='r', cfg=cfg, verbose=True) 
+    # cfg = tv.ReadConfig(memory_budget_mb=memory_budget_mb)
+    # ds = tv.Dataset(uri, mode='r', cfg=cfg, verbose=True) 
 
-    composer = [f'{",".join(ds.attributes())}', f'{",".join(ds.samples())}']
+    # composer = [f'{",".join(ds.attributes())}', f'{",".join(ds.samples())}']
+    # composer = [f'{",".join(DS.attributes())}', f'{",".join(DS.samples())}']
     
-    return pd.DataFrame(composer, columns=['property'], index=['attributes', 'samples'])
+    # return pd.DataFrame(composer, columns=['property'], index=['attributes', 'samples'])
+    return DF_COMPOSER
  
 
 def _append_tiledb_with_annotation(df, 
@@ -196,19 +215,24 @@ def _append_tiledb_with_annotation(df,
         return [gene_hit.gene, gene_hit.product] if gene_hit else [np.nan, np.nan]
 
     def search_for_snp_and_clinvar(s:pd.Series):
-        logger.info(f'search_for_snp_and_clinvar:input `s`: {s.shape}')
-        snp_hits = list(Snps.objects.filter(chr=s.loc[chromosome_label],
-                               start=s.loc[start_label],
-                               stop=s.loc[stop_label],
-                               alt=s.loc['alt_allele']
-                               ))
-        logger.info(f'search_for_snp_and_clinvar: snp_hits length: {len(snp_hits)}')
+        # # SNPS
+        # logger.info(f'search_for_snp_and_clinvar:input `s`: {s.shape}')
+        # snp_hits = list(Snps.objects.filter(chr=s.loc[chromosome_label],
+        #                        start=s.loc[start_label],
+        #                        stop=s.loc[stop_label],
+        #                        alt=s.loc['alt_allele']
+        #                        ))
+        # logger.info(f'search_for_snp_and_clinvar: snp_hits length: {len(snp_hits)}')
         
-        # for now, just take the first hit. May decide to change in future.
-        if snp_hits:
-            snp = snp_hits[0].rsid
-        else:
-            snp = '-'
+        # # for now, just take the first hit. May decide to change in future.
+        # if snp_hits:
+        #     snp = snp_hits[0].rsid
+        # else:
+        #     snp = '-'
+
+        snp = '-'
+
+        # CLINVAR
             
         clinvar_hits = list(Clinvars.objects.filter(
             chromosome=s.loc['chr_int'],
@@ -234,6 +258,8 @@ def _append_tiledb_with_annotation(df,
         else:
             clin = ['-'] * len(CLINVAR_FIELDS)
         return [snp] + clin
+
+    # script starts here
 
     df = df.copy()
 
