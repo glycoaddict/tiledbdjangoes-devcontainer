@@ -50,7 +50,7 @@ CHR_DICT_STR_TO_INT = {'chr1': 1, 'chr2': 2, 'chr3': 3,
 CLINVAR_FIELDS = [f.name for f in Clinvars._meta.get_fields()]
 
 CLINVAR_SEARCH_LIMIT = 0
-SNP_SEARCH_FLAG = False
+SNP_SEARCH_FLAG = True
 OVERALL_SEARCH_LIMIT = 1000
 
 # pre-fetch the help file
@@ -206,6 +206,7 @@ def _append_tiledb_with_annotation(df,
                                    stop_label      =   'pos_end',
                                    genotype_label   =   'fmt_GT',
                                    allele_label     =   'alleles',
+                                   af_label         =   'info_AF',
                                    show_only_alt    =   True,
                                    flags            =   {},
                                    ):
@@ -240,23 +241,27 @@ def _append_tiledb_with_annotation(df,
         return gene_hits
 
     def search_for_snp_and_clinvar(s:pd.Series):
-        # # SNPS
-        if SNP_SEARCH_FLAG:
-            logger.info(f'search_for_snp_and_clinvar:input `s`: {s.shape}')
-            snp_hits = list(Snps.objects.filter(chr=s.loc[chromosome_label],
-                                start=s.loc[start_label],
-                                stop=s.loc[stop_label],
-                                alt=s.loc['alt_allele']
-                                ))
-            logger.info(f'search_for_snp_and_clinvar: snp_hits length: {len(snp_hits)}')
-            
-            # for now, just take the first hit. May decide to change in future.
-            if snp_hits:
-                snp = snp_hits[0].rsid
+        if s.loc['id'] != ".":
+            snp = s.loc['id']
+        else:
+            # # SNPS
+            if SNP_SEARCH_FLAG:
+                logger.info(f'search_for_snp_and_clinvar:input `s`: {s.shape}')
+                snp_hits = list(Snps.objects.filter(chr=s.loc[chromosome_label], 
+                                                    start=s.loc[start_label]).filter(
+                                                        stop=s.loc[stop_label],
+                                                        alt=s.loc['alt_allele'],
+                                    )
+                                )
+                logger.info(f'search_for_snp_and_clinvar: snp_hits length: {len(snp_hits)}')
+                
+                # for now, just take the first hit. May decide to change in future.
+                if snp_hits:
+                    snp = snp_hits[0].rsid
+                else:
+                    snp = '-'
             else:
                 snp = '-'
-        else:
-            snp = '-'
 
         # CLINVAR
             
@@ -293,8 +298,10 @@ def _append_tiledb_with_annotation(df,
     # gts = convert_pd_series_of_arrays_to_padded_np_array(df.loc[:, genotype_label])
     # als = convert_pd_series_of_arrays_to_padded_np_array(df.loc[:, allele_label])
     alt_allele_lists = df.apply(rowloop_index_a_with_b, axis=1, a_label=allele_label, b_label=genotype_label)
-
     df['alt_allele'] = alt_allele_lists
+
+    alt_af_lists = df.apply(rowloop_index_a_with_b, axis=1, a_label=af_label, b_label=genotype_label, subtract_one=True)
+    df['alt_af'] = alt_af_lists
 
     ### remove rows with NO ALT GENOTYPE. The assumption is that it will be a normal phenotype so not interesting
     if show_only_alt:
@@ -320,7 +327,7 @@ def _append_tiledb_with_annotation(df,
         df = pd.concat([df.reset_index(drop=True), res_df_gene], axis=1)
     
     # explodes more than one nonzero allele to multiple lines, because rsid and clinvar search will require the alt allele
-    df = df.explode(['alt_allele']).reset_index(drop=True)
+    df = df.explode(['alt_allele', 'alt_af']).reset_index(drop=True)
 
     if flags.get('clinvar_flag', False):
         # apply a search limit so as not to make the user wait for so long, and also avoid a mistakenly large query.
