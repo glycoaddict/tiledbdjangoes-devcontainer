@@ -351,7 +351,11 @@ def filter_genotype_to_variants_only_output_mask(s:pd.Series) -> np.array:
         warnings.warn('<filter_genotype_to_variants_only>:fmt_GT had more than 2 strands. Truncating to 2 only.')
         gts = gts.iloc[:, :2]
     arr = gts == 0
-    return ~np.einsum('i,i->i', arr[:,0], arr[:,1])
+    arr2 = gts == -1
+    mask = ~(np.einsum('i,i->i', arr[:,0], arr[:,1]) | np.einsum('i,i->i', arr2[:,0], arr2[:,1]))
+    
+    
+    return mask
 
 ###### STYLERS #################################
 cell_hover = {  # for row hover use <tr> instead of <td>
