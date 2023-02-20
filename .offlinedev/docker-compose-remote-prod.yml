@@ -1,0 +1,59 @@
+version: "3"
+
+services:
+  prod:
+    image: djtdb-remote-dev:latest    
+    ports:
+      # - "0.0.0.0:8001:8001"
+      - "0.0.0.0:8000:8000"
+      # - "8000:8000"
+    volumes:
+      # - ../..:/workspaces 
+      - type: bind
+        source: /mnt/prismdb/prismrawstore/02_genetic/data/tileprism/
+        # source: c:/Users/choosf/Documents/SECURE/PRISM/genomicspark/data/g1000/my_vcf_dataset
+        target: /mnt/data/tileprism  
+      - type: bind
+        source: /home/choosf/devcontainer/djangotiledb_project-prod
+        target: /workspaces/devcontainer/djangotiledb_project
+    command: ["sleep", "infinity"]
+    env_file:
+      - .env.dev
+    depends_on:
+      - anno-db
+
+  dev:
+    image: djtdb-remote-dev:latest    
+    ports:
+      - "0.0.0.0:8001:8001"
+      # - "0.0.0.0:8000:8000"
+      # - "8000:8000"
+    volumes:
+      # - ../..:/workspaces 
+      - type: bind
+        source: /mnt/prismdb/prismrawstore/02_genetic/data/tileprism/
+        # source: c:/Users/choosf/Documents/SECURE/PRISM/genomicspark/data/g1000/my_vcf_dataset
+        target: /mnt/data/tileprism  
+      - type: bind
+        source: /home/choosf/devcontainer/djangotiledb_project
+        target: /workspaces/devcontainer/djangotiledb_project
+    command: ["sleep", "infinity"]
+    env_file:
+      - .env.dev
+    depends_on:
+      - anno-db
+
+  anno-db:
+    image: postgres:latest
+    restart: always
+    environment:
+      POSTGRES_DB: annodb
+      POSTGRES_USER: prism1
+      POSTGRES_PASSWORD: iDvbooTZ7NkASZAlTL9k
+    # ports:
+    #   - "5432:5432"
+    volumes:
+      - type: bind
+        source: /home/choosf/postgres_data
+        target: /var/lib/postgresql/data/
+    
