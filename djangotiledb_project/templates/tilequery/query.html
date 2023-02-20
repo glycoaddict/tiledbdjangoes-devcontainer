@@ -14,7 +14,13 @@
             <input type="text" name="samples" />
             <label for="attributes" class="label">attributes</label>
             <input type="text" name="attrs" value="sample_name,id,alleles,fmt_GT,contig,pos_start,pos_end,info_AF" />
-            <button class="btn btn-primary me-2" type="submit" name="submit">Submit</button>
+            <label for="genelist" class="label">Search Genelist?</label>
+            <input type="checkbox" name="genelist"/>
+            <label for="clinvar" class="label">Search Clinvar?</label>
+            <input type="checkbox" name="clinvar"/>
+            <label for="hidenonvariants" class="label">Hide Non-variants?</label>
+            <input type="checkbox" name="hidenonvariants" checked=true/>
+            <button class="btn btn-primary me-2" type="submit" name="submit">Search</button>
             
         </form>
         {% if query_summary %}

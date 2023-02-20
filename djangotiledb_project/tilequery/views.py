@@ -13,6 +13,7 @@ import json
 import re
 import logging
 import os
+import datetime
 
 from annoquery.models import Clinvars, Snps, Genes
 from .utils.genotypeops import rowloop_index_a_with_b
@@ -48,7 +49,9 @@ CHR_DICT_STR_TO_INT = {'chr1': 1, 'chr2': 2, 'chr3': 3,
 
 CLINVAR_FIELDS = [f.name for f in Clinvars._meta.get_fields()]
 
-CLINVAR_SEARCH_LIMIT = 20
+CLINVAR_SEARCH_LIMIT = 0
+SNP_SEARCH_FLAG = False
+OVERALL_SEARCH_LIMIT = 1000
 
 # pre-fetch the help file
 def prefetch_helper_dataset():
@@ -78,11 +81,17 @@ def index(request, methods=['GET', 'POST']):
             context=dict(query_summary=query_summary)
             return render(request, QUERY_OPTION, context)
     
-    if request.method == 'POST':        
+    if request.method == 'POST':     
+
+        time_start = datetime.datetime.now()
         
         regions=request.POST.get('regions').split(',')
         samples=request.POST.get('samples').split(',')
         attrs=request.POST.get('attrs').split(',')
+        clinvar_flag=request.POST.get('clinvar', False)
+        hidenonvariants_flag=request.POST.get('hidenonvariants', False)
+        genelist_flag=request.POST.get('genelist', False)
+        
         if all([x=='' for x in regions]) and (all([x=='' for x in samples]) if samples else True):
             w  = '<_query_tiledb> regions:List[str] must not be empty strings. Returning the possible samples and attributes you may query.'
             e = ValueError(w)
@@ -92,38 +101,31 @@ def index(request, methods=['GET', 'POST']):
             regions = pathogenic_vars            
             messages.add_message(request, messages.WARNING, 'Region unspecified but samples specified, so a list of pathogenic variants from clinvar was substituted.')
             
+        # GENERATE QUERY SUMMARY
         query_summary = pd.DataFrame([",".join(regions), ",".join(samples), ",".join(attrs)], columns=['query'], index=['regions', 'samples', 'attributes'])
 
-        # print((regions), (samples), (attrs))
-        
+        # THE TILEDB SEARCH STARTS HERE        
         try:
-            df = _query_tiledb(request, regions=regions, samples=samples, attrs=attrs)
+            df = _query_tiledb(request, regions=regions, samples=samples, attrs=attrs, 
+                               clinvar_flag=clinvar_flag, 
+                               hidenonvariants_flag=hidenonvariants_flag,
+                               genelist_flag=genelist_flag,
+                               )
             df.index.name = 'S/N'
         except Exception as e:
             return return_with_error(e, query_summary=query_summary.style.pipe(style_result_dataframe).render())
 
-        # # Tag with overlap of the original query
-        # if 'pos_start' in df.columns and 'pos_end' in df.columns:
-        #     answer_regions = df.loc[:, ['contig', 'pos_start', 'pos_end']]
-        #     query_regions = pd.DataFrame([re.split(r':|-', x)[1:] for x in regions], columns=['q_contig', 'q_pos_start', 'q_pos_end'])
-
-        # this dummy is needed just as a placeholder for now.
-        df_as_json = """[
-    { id: 1, name: 'John Doe', email: 'johndoe@example.com', country: 'United States' },
-    { id: 2, name: 'Jane Smith', email: 'janesmith@example.com', country: 'Canada' },
-    { id: 3, name: 'Bob Johnson', email: 'bobjohnson@example.com', country: 'United Kingdom' },
-]"""
-        # df_as_json = df.to_json()
-        
         df = dataframe_common_final_reformat(df)
 
-        ### STYLE ####
-        # final_content = df.to_html(classes=['table'], justify='center')
-        # final_content = df.style.pipe(style_result_dataframe).to_html()        
+        time_end = datetime.datetime.now()
+        elapsed_seconds = (time_end - time_start).seconds
+        query_summary.loc['query_details'] = [f'time={elapsed_seconds} secs | SNP search={SNP_SEARCH_FLAG} | Clinvar search={clinvar_flag} | HideNonVariants={hidenonvariants_flag} | clinvar_limit={CLINVAR_SEARCH_LIMIT} | overall_limit = {OVERALL_SEARCH_LIMIT}']
+
+        ### STYLE ####       
         final_content = df.style.pipe(style_result_dataframe).to_html()
         ##############
-        context =  dict(answer=final_content, query_summary=query_summary.style.pipe(style_result_dataframe).to_html(), 
-                        rows=df_as_json,
+        context =  dict(answer=final_content, 
+                        query_summary=query_summary.style.pipe(style_result_dataframe).to_html(), 
                         )
         return render(request, QUERY_OPTION, context)
         
@@ -146,14 +148,24 @@ def index(request, methods=['GET', 'POST']):
 #         df = self.ds.read(attrs=attrs, regions=regions, samples=samples)
 #         return df
 
-@login_required
+# @login_required
 def _query_tiledb(request,
                   regions:List[str],
                   samples:List[str],
                   attrs:List[str]=['sample_name', 'id', 'alleles', 'fmt_GT', 'contig', 'pos_start', 'pos_end', 'info_AF'],
                 #   attrs:Union[None, List[str]]=['sample_name', 'alleles', 'fmt_GT', 'contig', 'pos_start'], 
                   uri:str=URI, 
-                  memory_budget_mb:int=MEMORY_BUDGET_MB)->pd.DataFrame:
+                  memory_budget_mb:int=MEMORY_BUDGET_MB,
+                  clinvar_flag=False,
+                  hidenonvariants_flag=False,
+                  genelist_flag=False,
+                  )->pd.DataFrame:
+
+    flags = {'clinvar_flag':clinvar_flag,
+             'hidenonvariants_flag':hidenonvariants_flag,
+             'genelist_flag':genelist_flag,
+             }
+
     # if regions and sample are empty, return error
     # if regions empty but sample not empty, substitute the pathogenic var list.
     # if regions specified and sample specified, proceed as normal to extract all samples.
@@ -162,12 +174,16 @@ def _query_tiledb(request,
     ds = tv.Dataset(uri, mode='r', cfg=cfg, verbose=False)   
     df = ds.read(attrs=attrs, regions=regions, samples=samples)
 
-    if df.shape[0] > 0:
-        df = _append_tiledb_with_annotation(df)
+    if hidenonvariants_flag or clinvar_flag or genelist_flag:
+        df = df.loc[filter_genotype_to_variants_only_output_mask(df.fmt_GT), :]
+
+    if OVERALL_SEARCH_LIMIT and (df.shape[0] > OVERALL_SEARCH_LIMIT):
+        messages.add_message(request, messages.WARNING, f'More than {OVERALL_SEARCH_LIMIT} records retrieved. Not executing gene/snp/clinvar search.')
+        return df
+
+    if (df.shape[0] > 0) and (clinvar_flag or genelist_flag):
+        df = _append_tiledb_with_annotation(df, flags=flags)
     
-    # if all([x=='' for x in regions]):   
-    #     w  = '<_query_tiledb> regions:List[str] must not be empty strings'
-    #     raise ValueError(w)
     return df
 
 @login_required
@@ -191,6 +207,7 @@ def _append_tiledb_with_annotation(df,
                                    genotype_label   =   'fmt_GT',
                                    allele_label     =   'alleles',
                                    show_only_alt    =   True,
+                                   flags            =   {},
                                    ):
     """Needs at least the [chr, start, stop, genotype[0,1], allele[A,T]]. For the given dataframe
     of variants, append with the annotations from clinvar, dbsnp, refgene.
@@ -206,31 +223,40 @@ def _append_tiledb_with_annotation(df,
     # do gene search which doesn't need the allele explosion operation. so may have to skip some rows. could skip based on the index.
     # NB this is SLOW. faster way would be to find a super set of the region being queried, get a list of all the genes
     # in that region, then match region to gene. That way I only query the database once!
-    def genelist_lookup_inside_loop(row:pd.Series):        
-        gene_hit_items = Genes.objects.filter(chromosome=row.loc['chr_int'],
-                                              start__lte=row.loc[start_label],
-                                              stop__gte=row.loc[stop_label],
-                                              )
-        gene_hit = gene_hit_items.first()        
-        return [gene_hit.gene, gene_hit.product] if gene_hit else [np.nan, np.nan]
+    def genelist_lookup_inside_loop(row:pd.Series):
+        gene_hit_items = (Genes.objects.filter(chromosome=row.loc['chr_int'])
+                          .order_by('start')
+                          .filter(start__lte=row.loc[start_label], 
+                                  stop__gte=row.loc[stop_label],
+                                  )
+                          )
+        # gene_hit = gene_hit_items.first()
+        # return [gene_hit.gene, gene_hit.product] if gene_hit else [np.nan, np.nan]
+
+        if gene_hit_items:
+            gene_hits = ';'.join((list(set([re.sub(r'^gene\=', '', f'{g.gene}') for g in gene_hit_items]))))
+        else:
+            gene_hits = np.nan
+        return gene_hits
 
     def search_for_snp_and_clinvar(s:pd.Series):
         # # SNPS
-        # logger.info(f'search_for_snp_and_clinvar:input `s`: {s.shape}')
-        # snp_hits = list(Snps.objects.filter(chr=s.loc[chromosome_label],
-        #                        start=s.loc[start_label],
-        #                        stop=s.loc[stop_label],
-        #                        alt=s.loc['alt_allele']
-        #                        ))
-        # logger.info(f'search_for_snp_and_clinvar: snp_hits length: {len(snp_hits)}')
-        
-        # # for now, just take the first hit. May decide to change in future.
-        # if snp_hits:
-        #     snp = snp_hits[0].rsid
-        # else:
-        #     snp = '-'
-
-        snp = '-'
+        if SNP_SEARCH_FLAG:
+            logger.info(f'search_for_snp_and_clinvar:input `s`: {s.shape}')
+            snp_hits = list(Snps.objects.filter(chr=s.loc[chromosome_label],
+                                start=s.loc[start_label],
+                                stop=s.loc[stop_label],
+                                alt=s.loc['alt_allele']
+                                ))
+            logger.info(f'search_for_snp_and_clinvar: snp_hits length: {len(snp_hits)}')
+            
+            # for now, just take the first hit. May decide to change in future.
+            if snp_hits:
+                snp = snp_hits[0].rsid
+            else:
+                snp = '-'
+        else:
+            snp = '-'
 
         # CLINVAR
             
@@ -284,24 +310,30 @@ def _append_tiledb_with_annotation(df,
     # count_sorted_index = np.argsort(counts)            
     # return [gene_hit_items[int(count_sorted_index[-1])].gene, gene_hit_items[int(count_sorted_index[-1])].product,]
 
-    res_df_gene = pd.DataFrame(
-        df.apply(genelist_lookup_inside_loop, axis=1, result_type='expand').values,
-        columns=['gene','product']
-        )
-
-    logger.info('res_df_gene done')
-
-    df = pd.concat([df.reset_index(drop=True), res_df_gene], axis=1)
+    if flags.get('genelist_flag', False):
+        res_df_gene = pd.DataFrame(
+            df.apply(genelist_lookup_inside_loop, axis=1, result_type='expand').values,
+            columns=['gene'],
+            # columns=['gene','product']
+            )
+        logger.info('res_df_gene done')
+        df = pd.concat([df.reset_index(drop=True), res_df_gene], axis=1)
     
     # explodes more than one nonzero allele to multiple lines, because rsid and clinvar search will require the alt allele
     df = df.explode(['alt_allele']).reset_index(drop=True)
 
-    # apply a search limit so as not to make the user wait for so long, and also avoid a mistakenly large query.
-    snp_clinvar_result = pd.DataFrame(df.iloc[:CLINVAR_SEARCH_LIMIT].apply(search_for_snp_and_clinvar, axis=1, result_type='expand').values,
-                                      columns=['rsid'] + CLINVAR_FIELDS)
+    if flags.get('clinvar_flag', False):
+        # apply a search limit so as not to make the user wait for so long, and also avoid a mistakenly large query.
+        if CLINVAR_SEARCH_LIMIT:
+            clinvar_result_df = df.iloc[:CLINVAR_SEARCH_LIMIT].apply(search_for_snp_and_clinvar, axis=1, result_type='expand')
+        else:
+            clinvar_result_df = df.apply(search_for_snp_and_clinvar, axis=1, result_type='expand')
+            
+        snp_clinvar_result = pd.DataFrame(clinvar_result_df.values,
+                                        columns=['rsid'] + CLINVAR_FIELDS)
 
-    logger.info('snp_clinvar_result done')
-    df = pd.concat([df, snp_clinvar_result], axis=1)
+        logger.info('snp_clinvar_result done')
+        df = pd.concat([df, snp_clinvar_result], axis=1)
 
     
     return df
@@ -312,6 +344,14 @@ def _append_tiledb_with_annotation(df,
 def convert_pd_series_of_arrays_to_padded_np_array(s:pd.Series, fillna_value=np.nan):
     return pd.DataFrame(s.tolist()).fillna(fillna_value).to_numpy()
 
+def filter_genotype_to_variants_only_output_mask(s:pd.Series) -> np.array:
+    """assumes that the max columns of gts is 2"""
+    gts = convert_pd_series_of_arrays_to_padded_np_array(s, 0)
+    if gts.shape[1] > 2:
+        warnings.warn('<filter_genotype_to_variants_only>:fmt_GT had more than 2 strands. Truncating to 2 only.')
+        gts = gts.iloc[:, :2]
+    arr = gts == 0
+    return ~np.einsum('i,i->i', arr[:,0], arr[:,1])
 
 ###### STYLERS #################################
 cell_hover = {  # for row hover use <tr> instead of <td>
