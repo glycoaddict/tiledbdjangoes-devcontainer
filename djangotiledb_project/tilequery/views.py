@@ -174,7 +174,9 @@ def _query_tiledb(request,
     ds = tv.Dataset(uri, mode='r', cfg=cfg, verbose=False)   
     df = ds.read(attrs=attrs, regions=regions, samples=samples)
 
-    if hidenonvariants_flag or clinvar_flag or genelist_flag:
+    messages.add_message(request, messages.INFO, f'{df.shape[0]} records found.')
+
+    if (df.shape[0] > 0) and (hidenonvariants_flag or clinvar_flag or genelist_flag):
         df = df.loc[filter_genotype_to_variants_only_output_mask(df.fmt_GT), :]
 
     if OVERALL_SEARCH_LIMIT and (df.shape[0] > OVERALL_SEARCH_LIMIT):
