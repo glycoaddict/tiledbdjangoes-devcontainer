@@ -14,7 +14,9 @@ services:
         source: c:/Users/choosf/Documents/SECURE/PRISM/external_databases
         target: /mnt/data/external_databases
     # network_mode: service:db
-    command: ["sleep", "infinity"]
+    working_dir: /workspaces/devcontainer/djangotiledb_project/
+    command: ["python", "manage.py", "runserver", "0.0.0.0:8000"]
+    # command: ["sleep", "infinity"]
     ports:
       - "127.0.0.1:8000:8000"
       # - "127.0.0.1:80:80"
