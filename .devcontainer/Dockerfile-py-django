@@ -98,18 +98,35 @@ RUN apt-get update && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-ins
 
 RUN pip install --no-cache-dir Django==4.1.3 Jinja2==3.1.2 psycopg2==2.9.5 djangorestframework==3.14
 
+RUN pip install requests
+
+RUN pip install django-cors-headers django-rest-auth
+
+ARG NODE_VERSION=19.8.1
+ENV NODE_VERSION=$NODE_VERSION
+RUN wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash \    
+    && export NVM_DIR="$HOME/.nvm" \
+    && [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" \
+    && [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion" \
+    && nvm install $NODE_VERSION \
+    && nvm alias default $NODE_VERSION \
+    && nvm use default    
+
+RUN apt-get install -y npm && \ 
+    bash
+
+# RUN curl -sL https://deb.nodesource.com/setup_19.x | bash - && \
+#     apt-get update && \
+#     apt-get install -y nodejs npm && \
+#     bash
+
+WORKDIR /workspaces/devcontainer/vueapp/
+RUN npm install -g @vue/cli
+# RUN npm install vue-router
+# RUN npm install vuex
+# RUN npm install axios
+# RUN npm install vue-axios
+
 WORKDIR /workspaces/devcontainer/djangotiledb_project/
 # WORKDIR /
 CMD ["bash"]
-
-# WORKDIR /workspaces/devcontainer/djangotiledb_project
-# RUN python manage.py runserver 0.0.0.0:80 &
-# CMD ["python" "./manage.py" "runserver", "0.0.0.0:80"]
-# CMD ["python" "manage.py" "runserver", "0.0.0.0:80"]
-
-
-# COPY ./djangotiledb_project /data/djangotiledb_project
-
-# WORKDIR /data/djangotiledb_project
-
-
