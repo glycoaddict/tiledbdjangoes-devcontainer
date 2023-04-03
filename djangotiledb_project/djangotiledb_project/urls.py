@@ -21,5 +21,5 @@ urlpatterns = [
     path('admin/', admin.site.urls),    
     path('accounts/', include('django.contrib.auth.urls')),
     path('', include('tilequery.urls')),
-    path('query/', include('tilequery.urls')),
+    # path('query/', include('tilequery.urls')),
 ]

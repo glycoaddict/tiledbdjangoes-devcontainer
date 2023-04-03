@@ -3,6 +3,12 @@ from django.http import HttpResponse
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.renderers import JSONRenderer
+from rest_framework.authentication import SessionAuthentication
+from rest_framework.permissions import IsAuthenticated
+
 import pandas as pd
 import numpy as np
 from typing import List
@@ -52,6 +58,8 @@ CLINVAR_FIELDS = [f.name for f in Clinvars._meta.get_fields()]
 CLINVAR_SEARCH_LIMIT = 0
 SNP_SEARCH_FLAG = True
 OVERALL_SEARCH_LIMIT = 1000
+
+DEFAULT_QUERY_ATTRS = ','.join(['sample_name', 'id', 'alleles', 'fmt_GT', 'contig', 'pos_start', 'pos_end', 'info_AF'])
 
 # pre-fetch the help file
 def prefetch_helper_dataset():
@@ -119,18 +127,20 @@ def index(request, methods=['GET', 'POST']):
 
         time_end = datetime.datetime.now()
         elapsed_seconds = (time_end - time_start).seconds
-        query_summary.loc['query_details'] = [f'time={elapsed_seconds} secs | SNP search={SNP_SEARCH_FLAG} | Clinvar search={clinvar_flag} | HideNonVariants={hidenonvariants_flag} | clinvar_limit={CLINVAR_SEARCH_LIMIT} | overall_limit = {OVERALL_SEARCH_LIMIT}']
+        query_summary.loc['query_details'] = [f'time={elapsed_seconds} secs | SNP search={SNP_SEARCH_FLAG} | Clinvar search={clinvar_flag} | HideNonVariants={hidenonvariants_flag} | clinvar_limit={CLINVAR_SEARCH_LIMIT} | overall_limit = {OVERALL_SEARCH_LIMIT}'] # type: ignore
 
         ### STYLE ####       
-        final_content = df.style.pipe(style_result_dataframe).to_html()
+        final_content = df.style.pipe(style_result_dataframe).to_html(table_uuid='answertable')
         ##############
         context =  dict(answer=final_content, 
                         query_summary=query_summary.style.pipe(style_result_dataframe).to_html(), 
+                        query_items=query_summary.T.to_dict(orient="records") + [{'clinvar_flag':clinvar_flag, 'genelist_flag':genelist_flag, 'hidenonvariants_flag':hidenonvariants_flag}],
+                        # query_items=query_summary.to_json(orient="records", force_ascii=True),
                         )
         return render(request, QUERY_OPTION, context)
         
     else:            
-        return render(request, QUERY_OPTION)    
+        return render(request, QUERY_OPTION)
 
 # class tiledb:
 #     def __init__(self, uri:str=URI, memory_budget_mb:int=MEMORY_BUDGET_MB) -> None:
@@ -188,7 +198,7 @@ def _query_tiledb(request,
     
     return df
 
-@login_required
+# @login_required
 def _help_tiledb(request,
                  uri:str=URI, 
                  memory_budget_mb:int=MEMORY_BUDGET_MB) -> pd.DataFrame:
@@ -276,7 +286,7 @@ def _append_tiledb_with_annotation(df,
         logger.info(f'search_for_snp_and_clinvar: clinvar_hits length: {len(clinvar_hits)}')
         
         if clinvar_hits:
-            clin = [clinvar_hits[0].id, clinvar_hits[0].alleleid, clinvar_hits[0].type, 
+            clin = [clinvar_hits[0].id, clinvar_hits[0].alleleid, clinvar_hits[0].type, # type: ignore
                     clinvar_hits[0].name, clinvar_hits[0].geneid, clinvar_hits[0].genesymbol, 
                     clinvar_hits[0].hgnc_id, clinvar_hits[0].clinicalsignificance, clinvar_hits[0].clinsigsimple, 
                     clinvar_hits[0].lastevaluated, clinvar_hits[0].rsid, clinvar_hits[0].nsvesv, 
@@ -353,16 +363,15 @@ def _append_tiledb_with_annotation(df,
 def convert_pd_series_of_arrays_to_padded_np_array(s:pd.Series, fillna_value=np.nan):
     return pd.DataFrame(s.tolist()).fillna(fillna_value).to_numpy()
 
-def filter_genotype_to_variants_only_output_mask(s:pd.Series) -> np.array:
+def filter_genotype_to_variants_only_output_mask(s:pd.Series) -> np.ndarray:
     """assumes that the max columns of gts is 2"""
     gts = convert_pd_series_of_arrays_to_padded_np_array(s, 0)
     if gts.shape[1] > 2:
         warnings.warn('<filter_genotype_to_variants_only>:fmt_GT had more than 2 strands. Truncating to 2 only.')
-        gts = gts.iloc[:, :2]
+        gts = gts.iloc[:, :2] # type: ignore
     arr = gts == 0
     arr2 = gts == -1
     mask = ~(np.einsum('i,i->i', arr[:,0], arr[:,1]) | np.einsum('i,i->i', arr2[:,0], arr2[:,1]))
-    
     
     return mask
 
@@ -379,17 +388,83 @@ generic_cell = {
 
 def style_result_dataframe(styler):
     styler.set_table_attributes('class="table"')    
-    styler.set_table_styles([generic_cell, cell_hover], overwrite=True)    
+    styler.set_table_styles([generic_cell, cell_hover], overwrite=True)
     return styler
 
 def dataframe_common_final_reformat(df):
     xdf = df.copy()
 
     # renameing should be last step
-    xdf.rename(columns=VCF_TRANSLATE, inplace=True)    
+    xdf.rename(columns=VCF_TRANSLATE, inplace=True)
+    xdf.reset_index(drop=True, inplace=True)
+    xdf.index = xdf.index + 1
     return xdf
 
 #######################################
 
+###### API View #########
 
+class TileDBVCFQueryView(APIView):
+    # authentication_classes = [SessionAuthentication]
+    # permission_classes = [IsAuthenticated]
 
+    
+    def get(self, request):
+        return Response({"message": "This is a GET request"})
+    
+    def post(self, request):
+        # Get the parameters of the TileDBVCF query from the request data        
+
+        logger.info('RAN request with request.data: %s', request.data)
+        
+        query_params = request.data
+
+        time_start = datetime.datetime.now()
+        
+        regions=query_params.get('regions').split(',')
+        samples=query_params.get('samples').split(',')
+        attrs=query_params.get('attrs', DEFAULT_QUERY_ATTRS).split(',')
+        clinvar_flag=query_params.get('clinvar', False)
+        hidenonvariants_flag=query_params.get('hidenonvariants', False)
+        genelist_flag=query_params.get('genelist', False)
+        
+        if all([x=='' for x in regions]) and (all([x=='' for x in samples]) if samples else True):
+            w  = '<_query_tiledb> regions:List[str] must not be empty strings. Returning the possible samples and attributes you may query.'
+            e = ValueError(w)
+            df_help = _help_tiledb(request)             
+            return Response({'position':1, 'error': str(e)}, status=400)
+        elif all([x=='' for x in regions]):
+            regions = pathogenic_vars            
+            messages.add_message(request, messages.WARNING, 'Region unspecified but samples specified, so a list of pathogenic variants from clinvar was substituted.')
+            
+        # GENERATE QUERY SUMMARY
+        query_summary = pd.DataFrame([",".join(regions), ",".join(samples), ",".join(attrs)], columns=['query'], index=['regions', 'samples', 'attributes'])
+
+        # THE TILEDB SEARCH STARTS HERE        
+        try:
+            df = _query_tiledb(request, regions=regions, samples=samples, attrs=attrs, 
+                               clinvar_flag=clinvar_flag, 
+                               hidenonvariants_flag=hidenonvariants_flag,
+                               genelist_flag=genelist_flag,
+                               )
+            df.index.name = 'S/N'
+        except Exception as e:
+            return Response({'position':2, 'error': str(e)}, status=400)
+
+        df = dataframe_common_final_reformat(df)
+
+        time_end = datetime.datetime.now()
+        elapsed_seconds = (time_end - time_start).seconds
+        query_summary.loc['query_details'] = [f'time={elapsed_seconds} secs | SNP search={SNP_SEARCH_FLAG} | Clinvar search={clinvar_flag} | HideNonVariants={hidenonvariants_flag} | clinvar_limit={CLINVAR_SEARCH_LIMIT} | overall_limit = {OVERALL_SEARCH_LIMIT}'] # type: ignore
+
+        ### STYLE ####       
+        final_content = df.style.pipe(style_result_dataframe).to_html()
+        ##############
+        # context =  dict(answer=final_content, 
+        #                 query_summary=query_summary.style.pipe(style_result_dataframe).to_html(), 
+        #                 )
+        return Response({
+            'answer':JSONRenderer().render(df),
+            'query_summary':JSONRenderer().render(query_summary),
+            })
+        # return render(request, QUERY_OPTION, context)
