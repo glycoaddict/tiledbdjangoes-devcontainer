@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 
 import pandas as pd
 import numpy as np
-from typing import List
+from typing import List, Tuple, Dict
 import warnings
 import configparser
 import tiledbvcf as tv
@@ -60,6 +60,7 @@ SNP_SEARCH_FLAG = True
 OVERALL_SEARCH_LIMIT = 1000
 
 DEFAULT_QUERY_ATTRS = ','.join(['sample_name', 'id', 'alleles', 'fmt_GT', 'contig', 'pos_start', 'pos_end', 'info_AF'])
+DEFAULT_QUERY_ATTRS_LIST = DEFAULT_QUERY_ATTRS.split(',')
 
 # pre-fetch the help file
 def prefetch_helper_dataset():
@@ -95,22 +96,42 @@ def index(request, methods=['GET', 'POST']):
         
         regions=request.POST.get('regions').split(',')
         samples=request.POST.get('samples').split(',')
-        attrs=request.POST.get('attrs').split(',')
+        # attrs=request.POST.get('attrs').split(',')
+        attrs=DEFAULT_QUERY_ATTRS_LIST
+        genes=request.POST.get('genes').split(',')
         clinvar_flag=request.POST.get('clinvar', False)
         hidenonvariants_flag=request.POST.get('hidenonvariants', False)
         genelist_flag=request.POST.get('genelist', False)
-        
+
+        # VALIDATE INPUTS
         if all([x=='' for x in regions]) and (all([x=='' for x in samples]) if samples else True):
-            w  = '<_query_tiledb> regions:List[str] must not be empty strings. Returning the possible samples and attributes you may query.'
+            # case 1: no regions and no samples
+            w  = '<_query_tiledb> regions must not be empty strings. Returning the possible samples and attributes you may query. Please specify samples and [regions or genes]'
             e = ValueError(w)
             df_help = _help_tiledb(request)             
             return return_with_error(e, query_summary=df_help.style.pipe(style_result_dataframe).to_html())       
-        elif all([x=='' for x in regions]):
+        elif all([x!='' for x in genes]) and all([x!='' for x in samples]):
+            # case 1.1 samples and genes specified but no regions
+            ## convert genes to regions
+            ## continue the search by regions
+            # note that if specified, genes will override regions.
+            region_list = genes_to_regions(genes)
+            
+            if not region_list:
+                return return_with_error(ValueError(f'No genes found for {genes}.'))
+            else:
+                regions = region_list.split(',')
+        
+        elif all([x=='' for x in regions]) and all([x=='' for x in genes]):
+            # case 1.2: samples are specified but no regions
             regions = pathogenic_vars            
             messages.add_message(request, messages.WARNING, 'Region unspecified but samples specified, so a list of pathogenic variants from clinvar was substituted.')
+
+        else:
+            return return_with_error(ValueError('Please specify samples and [regions or genes].'))
             
         # GENERATE QUERY SUMMARY
-        query_summary = pd.DataFrame([",".join(regions), ",".join(samples), ",".join(attrs)], columns=['query'], index=['regions', 'samples', 'attributes'])
+        query_summary = pd.DataFrame([",".join(regions), ",".join(genes), ",".join(samples), ",".join(attrs)], columns=['query'], index=['regions', 'genes', 'samples', 'attributes'])
 
         # THE TILEDB SEARCH STARTS HERE        
         try:
@@ -358,6 +379,35 @@ def _append_tiledb_with_annotation(df,
     return df
 
 
+def genes_to_regions(genes:List[str]) -> str:
+    """converts a list of genes to a list of regions
+    
+    Args:
+        genes (List[str]): list of genes        
+    
+    Returns:
+        List[str]: list of regions
+    """
+    modified_gene_list = [f'gene={x}' for x in genes]
+    
+    gene_hits = Genes.objects.filter(gene__in=modified_gene_list)
+    if not gene_hits:
+        # raise ValueError(f'No gene hits for {genes}')
+        return ''
+
+    gene_spans = [(int(g.chromosome),int(g.start),int(g.stop)) for g in gene_hits]
+
+    # convert these gene_spans into regions using convert_spans_to_chrpos
+    regions = convert_spans_to_chrpos(gene_spans)
+
+    return regions
+    
+
+
+
+
+
+
 ###### UTILS ###################################
 
 def convert_pd_series_of_arrays_to_padded_np_array(s:pd.Series, fillna_value=np.nan):
@@ -374,6 +424,54 @@ def filter_genotype_to_variants_only_output_mask(s:pd.Series) -> np.ndarray:
     mask = ~(np.einsum('i,i->i', arr[:,0], arr[:,1]) | np.einsum('i,i->i', arr2[:,0], arr2[:,1]))
     
     return mask
+
+
+def get_superset(spans: List[Tuple[int, int]]):
+    '''Returns the smallest set of non-overlapping spans that cover all the spans in the input.
+
+    spans: a list of (start, end) tuples, where start and end are integers.
+
+    returns: a list of (start, end) tuples, where start and end are integers.
+    
+    '''
+    sorted_spans = sorted(spans, key=lambda x: x[0])
+    merged_spans = []
+    current_span = sorted_spans[0]
+    for span in sorted_spans[1:]:
+        if span[0] <= current_span[1]:
+            current_span = (current_span[0], max(current_span[1], span[1]))
+        else:
+            merged_spans.append(current_span)
+            current_span = span
+    merged_spans.append(current_span)
+    return merged_spans
+
+def group_spans(spans)->Dict[int, List[Tuple[int, int]]]:
+    groups = {}
+    for span in spans:
+        key = span[0]
+        if key not in groups:
+            groups[key] = [span[1:]]
+        else:
+            groups[key].append(span[1:])
+    
+    
+    for key, span_list in groups.items():
+        superset = get_superset(span_list)
+        
+        groups[key] = superset
+    return groups
+
+def convert_spans_to_chrpos(spans: List[Tuple[int, int, int]])-> str:
+    grouped_spans = group_spans(spans)
+
+    """parse the grouped spans into a string of format chr:pos1-pos2,chr:pos1-pos2"""
+    result = []
+    for key, span_list in grouped_spans.items():
+        for span in span_list:
+            result.append(f'chr{key}:{span[0]}-{span[1]}')
+    return ','.join(result)
+    
 
 ###### STYLERS #################################
 cell_hover = {  # for row hover use <tr> instead of <td>
