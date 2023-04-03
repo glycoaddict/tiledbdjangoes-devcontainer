@@ -6,35 +6,65 @@
 
 {% block content %}
 <div class="container">
-        <h1>Genomics Query (dev)</h1>
+        <h1>Genomics Query v0.2</h1>
         <form action="" method="post" name="query">{% csrf_token %}
-            <label for="regions" class="label">regions</label>
-            <input type="text" name="regions" />
-            <label for="samples" class="label">samples</label>
-            <input type="text" name="samples" />
-            <label for="attributes" class="label">attributes</label>
-            <input type="text" name="attrs" value="sample_name,id,alleles,fmt_GT,contig,pos_start,pos_end,info_AF" />
-            <label for="genelist" class="label">Search Genelist?</label>
-            <input type="checkbox" name="genelist"/>
-            <label for="clinvar" class="label">Search Clinvar?</label>
-            <input type="checkbox" name="clinvar"/>
-            <label for="hidenonvariants" class="label">Hide Non-variants?</label>
-            <input type="checkbox" name="hidenonvariants" checked=true/>
-            <button class="btn btn-primary me-2" type="submit" name="submit">Search</button>
+            <div class="row mb-3">
+                <div class="col">
+                    <label for="samples" class="form-label">Samples</label>
+                    <input type="text" class="form-control" id="samples" name="samples" placeholder="e.g. 0115-0029,0115-0031,0115-0043" {% if query_items %}value="{{ query_items.0.samples }}"{% endif %}/>
+                </div>
+                <div class="col">
+                    <label for="attrs" class="form-label">Attributes</label>
+                    <input type="text" class="form-control" id="attrs" name="attrs" {% if query_items %}value="{{ query_items.0.attributes }}"{% else %}value="sample_name,id,alleles,fmt_GT,contig,pos_start,pos_end,info_AF"{% endif %} />
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col">
+                    <label for="regions" class="form-label">Regions</label>
+                    <input type="text" class="form-control" id="regions" name="regions" placeholder="e.g. chr19:465000-468000,chr19:469000-471000" {% if query_items %}value="{{ query_items.0.regions }}"{% endif %} />
+                </div>
+            </div>
+            <div class="row mb-3">
+                <div class="col">
+                    <label for="genes" class="form-label">Genes</label>
+                    <input type="text" class="form-control" id="genes" name="genes" placeholder="e.g. TUBB" {% if query_items %}value="{{ query_items.0.genes }}"{% endif %} />
+                </div>
+            </div>
+            
+            <div class="form-check form-check-inline">
+                <label class="form-check-label" for="genelist">Search Genelist?</label>
+                <input class="form-check-input" type="checkbox" id="genelist" name="genelist" {% if query_items %}{% if query_items.1.genelist_flag %}checked{% endif %}{% endif %}/>
+            </div>
+            <div class="form-check form-check-inline">
+                <label class="form-check-label" for="clinvar" class="label">Search Clinvar?</label>
+                <input class="form-check-input" type="checkbox" id="clinvar" name="clinvar" {% if query_items %}{% if query_items.1.clinvar_flag %}checked{% endif %}{% endif %} />
+            </div>
+            <div class="form-check form-check-inline">
+                <label for="hidenonvariants" class="label">Hide Non-variants?</label>
+                <input type="checkbox" class="form-check-input" id="hidenonvariants" name="hidenonvariants" {% if query_items %}{% if query_items.1.hidenonvariants_flag %}checked{% endif %}{% else %}checked{% endif %}/>
+            </div>
+            <button class="btn btn-primary me-2 p-2" type="submit" name="submit">Search</button>
             
         </form>
         {% if query_summary %}
-        <div id="query_summary">
-            {{ query_summary | safe }}
+
+        <div class="my-2">
+            <button type="button" class="btn btn-secondary" data-bs-toggle="collapse" data-bs-target="#myCollapse">Show Query Summary</button>
+            
+            <div class="collapse" id="myCollapse">
+                <div class="card card-body">
+                    <div id="query_summary">
+                        {{ query_summary | safe }}    
+                    </div>
+                </div>
+            </div>            
+            {% endif %}
 
         </div>
-        {% endif %}
 
         {% if answer %}
-        <!-- <div class="container">            
-            <p>Type something in the input field to search the list for specific items:</p>  
-            <input class="form-control" id="myInput" type="text" placeholder="Search.."> 
-        </div> -->
+        
+        
         <div>
             <div id="answerTable_holder">
                 {{ answer | safe }}
@@ -42,21 +72,18 @@
         </div>
         
         {% endif %}
-
-        {% block answer %}
-        {% endblock %}
+        
     </div>
 {% endblock %}
 
-<!-- {% block scripts %}
-<script>
-    $(document).ready(function(){
-      $("#myInput").on("keyup", function() {
-        var value = $(this).val().toLowerCase();
-        $("#T_answerTable tr").filter(function() {
-          $(this).toggle($(this).text().toLowerCase().indexOf(value) > -1)
-        });
-      });
+{% block scripts %}
+<script type="text/javascript">
+
+    $(document).ready(function() {
+        $('#T_answertable').DataTable({
+            lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+        }
+        );
     });
-    </script>
-    {% endblock %} -->
+</script>
+{% endblock %}
