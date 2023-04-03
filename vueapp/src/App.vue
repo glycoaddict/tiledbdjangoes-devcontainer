@@ -1,30 +1,52 @@
 <template>
-  <nav>
-    <router-link to="/">Home</router-link> |
-    <router-link to="/about">About</router-link>
-  </nav>
-  <router-view/>
+  <div>
+    <button class="btn btn-primary rounded-pill px-3" type="button">Primary</button>
+    <!-- <QueryInput @form-submitted="results => data = results" />
+    <MyTable :table-data="results.answer" />
+    <MyQuerySummary :table-data="data.query_summary" /> -->
+    <!-- <QueryInput v-on:search="searchVCF" /> -->
+    <!-- <MyTable v-if="result" :data="result.answer" />
+    <MyQuerySummary v-if="result" :data="result.query_summary" /> -->
+  </div>
 </template>
 
-<style lang="scss">
-#app {
-  font-family: Avenir, Helvetica, Arial, sans-serif;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
-  text-align: center;
-  color: #2c3e50;
-}
+<script>
+import QueryInput from "./components/QueryInput.vue";
+import MyTable from "./components/MyTable.vue";
+import MyQuerySummary from "./components/MyQuerySummary.vue";
+import axios from "axios";
 
-nav {
-  padding: 30px;
-
-  a {
-    font-weight: bold;
-    color: #2c3e50;
-
-    &.router-link-exact-active {
-      color: #42b983;
-    }
-  }
-}
-</style>
+export default {
+  name: "App",
+  components: {
+    QueryInput,
+    MyTable,
+    MyQuerySummary,
+  },
+  data() {
+    return {
+      result: null,
+    };
+  },
+  methods: {
+    searchVCF(queryInput) {
+      axios
+        .post("http://localhost:8000/vcf-query", {
+          regions: queryInput.regions,
+          samples: queryInput.sample_name,
+          attrs: "id,alleles,fmt_GT,contig,pos_start,pos_end,info_AF",
+          clinvar: false,
+          hidenonvariants: false,
+          genelist: false,
+        })
+        .then((response) => {
+          this.result = response.data;
+          console.log("data received!");
+        })
+        .catch((error) => {
+          console.log(error);
+        });
+    },
+  },
+};
+</script>

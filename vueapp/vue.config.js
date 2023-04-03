@@ -6,7 +6,7 @@ module.exports = defineConfig({
     entry: "./src/main.js",
     devServer: {
       hot: true,
-      port: 8080,
+      port: 8001,
       host: '0.0.0.0',
     },
     watch: true,
