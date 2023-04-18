@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 
 import pandas as pd
 import numpy as np
-from typing import List, Tuple, Dict
+from typing import List, Tuple, Dict, Union
 import warnings
 import configparser
 import tiledbvcf as tv
@@ -34,7 +34,7 @@ MEMORY_BUDGET_MB=int(config['TILEDB'].get('MEMORY_BUDGET_MB', '32000'))
 URI=str(config['TILEDB'].get('URI', '/mnt/data/tileprism'))
 
 # persistent vars:
-pathogenic_vars = ['chr17:43124028-43124029', 'chr13:32340301-32340301', 'chr7:117559591-117559593', 'chr13:20189547-20189547', 'chr12:112477719-112477719', 'chr16:8811153-8811153', 'chr1:216247118-216247118', 'chr11:66211206-66211206', 'chr19:11116928-11116928', 'chr15:89327201-89327201', 'chrX:154030912-154030912', 'chr10:110964362-110964362', 'chr22:50627165-50627165', 'chr18:51078306-51078306', 'chr9:101427574-101427574', 'chr13:51944145-51944145', 'chr16:23636036-23636037', 'chr11:6617154-6617154', 'chr3:12604200-12604200', 'chr10:87933147-87933147', 'chr11:534289-534289', 'chr16:3243447-3243447', 'chr12:102840507-102840507', 'chr17:7674220-7674220', 'chr18:31592974-31592974', 'chr11:108251026-108251027', 'chr12:76347713-76347714', 'chr7:92501562-92501562', 'chr9:37783993-37783993', 'chr14:23426833-23426833', 'chr15:72346579-72346580', 'chr11:5226774-5226774', 'chr11:47337729-47337730', 'chr4:1801837-1801837', 'chr1:45331219-45331221', 'chr12:32802557-32802557', 'chr2:47803500-47803501', 'chr11:64759751-64759751', 'chr6:43007265-43007265', 'chr5:112839515-112839519', 'chr19:41970405-41970405', 'chr15:66436843-66436843', 'chr7:140801502-140801502', 'chr3:81648854-81648854', 'chr17:42903947-42903947', 'chr2:26195184-26195184', 'chr4:987858-987858', 'chr17:7222272-7222272', 'chr1:9726972-9726972', 'chr7:5986933-5986934', 'chr12:101753470-101753471', 'chr6:32040110-32040110', 'chr3:179234297-179234297', 'chr2:47414421-47414421', 'chr13:31269278-31269278', 'chr10:121520163-121520163', 'chr7:107683453-107683453', 'chr6:136898213-136898213', 'chr16:30737370-30737370', 'chr16:16163078-16163078', 'chr2:28776944-28776944', 'chr3:37047632-37047634', 'chr17:31214524-31214524', 'chr15:80180230-80180230', 'chr17:80118271-80118271', 'chr15:42387803-42387803', 'chr17:80212128-80212128', 'chr15:23645746-23645747', 'chr6:73644583-73644583', 'chr19:18162974-18162974', 'chrX:111685040-111685040', 'chr2:39022774-39022774', 'chr15:90761015-90761015', 'chr18:23536736-23536736', 'chr6:161785820-161785820', 'chr17:50167653-50167653', 'chr9:95172033-95172033', 'chr2:61839695-61839695', 'chr4:3493106-3493107', 'chr9:34649032-34649032', 'chr1:94029515-94029515', 'chr17:6425781-6425781', 'chr4:186274193-186274193', 'chr2:73914835-73914835', 'chr10:54317414-54317414', 'chr19:35831056-35831056', 'chr7:151576412-151576412', 'chr17:35103298-35103298', 'chr19:12649932-12649932', 'chr19:50323685-50323685', 'chr9:108899816-108899816', 'chr11:17531408-17531409', 'chr17:17216394-17216395', 'chr17:3499000-3499000', 'chr11:2167905-2167905', 'chr10:100749771-100749772', 'chrX:153932410-153932410', 'chr14:28767732-28767733', 'chr15:63060899-63060899', 'chr4:15567676-15567676']
+PATHOGENIC_VARS = ['chr17:43124028-43124029', 'chr13:32340301-32340301', 'chr7:117559591-117559593', 'chr13:20189547-20189547', 'chr12:112477719-112477719', 'chr16:8811153-8811153', 'chr1:216247118-216247118', 'chr11:66211206-66211206', 'chr19:11116928-11116928', 'chr15:89327201-89327201', 'chrX:154030912-154030912', 'chr10:110964362-110964362', 'chr22:50627165-50627165', 'chr18:51078306-51078306', 'chr9:101427574-101427574', 'chr13:51944145-51944145', 'chr16:23636036-23636037', 'chr11:6617154-6617154', 'chr3:12604200-12604200', 'chr10:87933147-87933147', 'chr11:534289-534289', 'chr16:3243447-3243447', 'chr12:102840507-102840507', 'chr17:7674220-7674220', 'chr18:31592974-31592974', 'chr11:108251026-108251027', 'chr12:76347713-76347714', 'chr7:92501562-92501562', 'chr9:37783993-37783993', 'chr14:23426833-23426833', 'chr15:72346579-72346580', 'chr11:5226774-5226774', 'chr11:47337729-47337730', 'chr4:1801837-1801837', 'chr1:45331219-45331221', 'chr12:32802557-32802557', 'chr2:47803500-47803501', 'chr11:64759751-64759751', 'chr6:43007265-43007265', 'chr5:112839515-112839519', 'chr19:41970405-41970405', 'chr15:66436843-66436843', 'chr7:140801502-140801502', 'chr3:81648854-81648854', 'chr17:42903947-42903947', 'chr2:26195184-26195184', 'chr4:987858-987858', 'chr17:7222272-7222272', 'chr1:9726972-9726972', 'chr7:5986933-5986934', 'chr12:101753470-101753471', 'chr6:32040110-32040110', 'chr3:179234297-179234297', 'chr2:47414421-47414421', 'chr13:31269278-31269278', 'chr10:121520163-121520163', 'chr7:107683453-107683453', 'chr6:136898213-136898213', 'chr16:30737370-30737370', 'chr16:16163078-16163078', 'chr2:28776944-28776944', 'chr3:37047632-37047634', 'chr17:31214524-31214524', 'chr15:80180230-80180230', 'chr17:80118271-80118271', 'chr15:42387803-42387803', 'chr17:80212128-80212128', 'chr15:23645746-23645747', 'chr6:73644583-73644583', 'chr19:18162974-18162974', 'chrX:111685040-111685040', 'chr2:39022774-39022774', 'chr15:90761015-90761015', 'chr18:23536736-23536736', 'chr6:161785820-161785820', 'chr17:50167653-50167653', 'chr9:95172033-95172033', 'chr2:61839695-61839695', 'chr4:3493106-3493107', 'chr9:34649032-34649032', 'chr1:94029515-94029515', 'chr17:6425781-6425781', 'chr4:186274193-186274193', 'chr2:73914835-73914835', 'chr10:54317414-54317414', 'chr19:35831056-35831056', 'chr7:151576412-151576412', 'chr17:35103298-35103298', 'chr19:12649932-12649932', 'chr19:50323685-50323685', 'chr9:108899816-108899816', 'chr11:17531408-17531409', 'chr17:17216394-17216395', 'chr17:3499000-3499000', 'chr11:2167905-2167905', 'chr10:100749771-100749772', 'chrX:153932410-153932410', 'chr14:28767732-28767733', 'chr15:63060899-63060899', 'chr4:15567676-15567676']
 LATEST_COUNT = 0
 
 # VCF header translation table
@@ -61,6 +61,11 @@ OVERALL_SEARCH_LIMIT = 1000
 
 DEFAULT_QUERY_ATTRS = ','.join(['sample_name', 'id', 'alleles', 'fmt_GT', 'contig', 'pos_start', 'pos_end', 'info_AF'])
 DEFAULT_QUERY_ATTRS_LIST = DEFAULT_QUERY_ATTRS.split(',')
+
+REGION_REGEX = re.compile(r'^chr([1-9]|1[0-9]|2[0-4]|X|Y):\d{1,9}-\d{1,9}$')
+ALPHANUMERIC_REGEX = re.compile(r'^[a-zA-Z0-9]+$')
+
+
 
 # pre-fetch the help file
 def prefetch_helper_dataset():
@@ -89,6 +94,52 @@ def index(request, methods=['GET', 'POST']):
             messages.add_message(request, messages.WARNING, e.__str__())
             context=dict(query_summary=query_summary)
             return render(request, QUERY_OPTION, context)
+
+    def _return_with_error_pregen():
+        w  = '<_query_tiledb> Malformed search. Returning the possible samples and attributes you may query. Please specify samples and [regions or genes]'
+        e = ValueError(w)
+        df_help = _help_tiledb(request)             
+        return return_with_error(e, query_summary=df_help.style.pipe(style_result_dataframe).to_html())
+
+    def _return_with_error_invalid():
+        return return_with_error(ValueError('Please specify samples and [regions or genes].'))
+
+    def _genes_to_regions_with_validation(genes):
+        region_list_str = genes_to_regions(genes)
+        if not region_list_str:
+            return []
+            # return return_with_error(ValueError(f'No genes found for: {genes}.'))
+        else:
+            return region_list_str.split(',')
+
+    def business_logic(regions_valid, genes_valid, samples_valid) -> Tuple[Union[str,HttpResponse], Union[List[str], None]]:
+        '''This is the business logic for the query.
+
+        invalid queries will return a HttpResponse with an error message
+        valid queries will return a string 'pass' and None or a list of regions
+        
+        '''
+        if genes_valid and samples_valid:
+            regions = _genes_to_regions_with_validation(genes)
+            if (not regions) or (len(regions)==0):
+                return _return_with_error_invalid(), None
+            else:
+                return 'pass', regions
+        if regions_valid and samples_valid:
+            return 'pass', None
+        elif not regions_valid and not samples_valid and not genes_valid:
+            return _return_with_error_pregen(), None
+        elif not samples_valid:
+            return _return_with_error_invalid(), None
+        elif not regions_valid and not genes_valid:            
+            regions = PATHOGENIC_VARS
+            messages.add_message(request, messages.WARNING, 'Region unspecified or invalid but samples specified, so a list of pathogenic variants from clinvar was substituted.')
+            return 'pass', regions
+        else:
+            return _return_with_error_invalid(), None
+
+    
+    
     
     if request.method == 'POST':     
 
@@ -103,32 +154,71 @@ def index(request, methods=['GET', 'POST']):
         hidenonvariants_flag=request.POST.get('hidenonvariants', False)
         genelist_flag=request.POST.get('genelist', False)
 
-        # VALIDATE INPUTS
-        if all([x=='' for x in regions]) and (all([x=='' for x in samples]) if samples else True):
-            # case 1: no regions and no samples
-            w  = '<_query_tiledb> regions must not be empty strings. Returning the possible samples and attributes you may query. Please specify samples and [regions or genes]'
-            e = ValueError(w)
-            df_help = _help_tiledb(request)             
-            return return_with_error(e, query_summary=df_help.style.pipe(style_result_dataframe).to_html())       
-        elif all([x!='' for x in genes]) and all([x!='' for x in samples]):
-            # case 1.1 samples and genes specified but no regions
-            ## convert genes to regions
-            ## continue the search by regions
-            # note that if specified, genes will override regions.
-            region_list = genes_to_regions(genes)
-            
-            if not region_list:
-                return return_with_error(ValueError(f'No genes found for {genes}.'))
-            else:
-                regions = region_list.split(',')
+        # make sure samples is only alphanumeric so it doesn't mess up SQL
         
-        elif all([x=='' for x in regions]) and all([x=='' for x in genes]):
-            # case 1.2: samples are specified but no regions
-            regions = pathogenic_vars            
-            messages.add_message(request, messages.WARNING, 'Region unspecified but samples specified, so a list of pathogenic variants from clinvar was substituted.')
 
-        else:
-            return return_with_error(ValueError('Please specify samples and [regions or genes].'))
+        # VALIDATE INPUTS
+        regions_valid = all([(x!='') and (REGION_REGEX.fullmatch(str(x)) is not None) for x in regions]) if regions else False        
+        samples_valid = all([(x!='') and (ALPHANUMERIC_REGEX.fullmatch(str(x))) for x in samples]) if samples else False
+        genes_valid = all([x!='' for x in genes]) if genes else False 
+
+        # if genes_valid and samples_valid:
+        #     regions = _genes_to_regions_with_validation(genes)
+        #     if not regions or len(regions)==0:
+        #         return _return_with_error_invalid()
+        #     else:
+        #         pass
+        # if regions_valid and samples_valid:
+        #     pass
+        # elif not regions_valid and not samples_valid and not genes_valid:
+        #     return _return_with_error_pregen()
+        # elif not samples_valid:
+        #     return _return_with_error_invalid()
+        # elif not regions_valid and not genes_valid:            
+        #     regions = PATHOGENIC_VARS
+        #     messages.add_message(request, messages.WARNING, 'Region unspecified or invalid but samples specified, so a list of pathogenic variants from clinvar was substituted.')
+        #     pass
+        # else:
+        #     return _return_with_error_invalid()
+
+        http, new_regions = business_logic(regions_valid, genes_valid, samples_valid)
+        if isinstance(http, HttpResponse):
+            return http
+        if new_regions:
+            regions = new_regions
+
+        # second catch just in case
+        if not regions:
+            return _return_with_error_invalid()
+
+
+        
+        # if not regions_valid and not samples_valid:
+        #     # case 1: no regions and no samples
+        #     w  = '<_query_tiledb> regions must not be empty strings. Returning the possible samples and attributes you may query. Please specify samples and [regions or genes]'
+        #     e = ValueError(w)
+        #     df_help = _help_tiledb(request)             
+        #     return return_with_error(e, query_summary=df_help.style.pipe(style_result_dataframe).to_html())       
+        
+        # elif genes_valid and samples_valid:
+        #     # case 1.1 samples and genes specified but optional regions.
+        #     ## convert genes to regions
+        #     ## continue the search by regions
+        #     ## note that if specified, genes will override regions.
+        #     region_list = genes_to_regions(genes)
+            
+        #     if not region_list:
+        #         return return_with_error(ValueError(f'No genes found for: {genes}.'))
+        #     else:
+        #         regions = region_list.split(',')
+        
+        # elif not regions_valid and not genes_valid and samples_valid:
+        #     # case 1.2: samples are specified but no regions and no genes
+        #     regions = PATHOGENIC_VARS
+        #     messages.add_message(request, messages.WARNING, 'Region unspecified but samples specified, so a list of pathogenic variants from clinvar was substituted.')
+
+        # else:
+        #     return return_with_error(ValueError('Please specify samples and [regions or genes].'))
             
         # GENERATE QUERY SUMMARY
         query_summary = pd.DataFrame([",".join(regions), ",".join(genes), ",".join(samples), ",".join(attrs)], columns=['query'], index=['regions', 'genes', 'samples', 'attributes'])
@@ -209,6 +299,8 @@ def _query_tiledb(request,
 
     if (df.shape[0] > 0) and (hidenonvariants_flag or clinvar_flag or genelist_flag):
         df = df.loc[filter_genotype_to_variants_only_output_mask(df.fmt_GT), :]
+        # messages.add_message(request, messages.INFO, 'filtering to non-variants only')
+        
 
     if OVERALL_SEARCH_LIMIT and (df.shape[0] > OVERALL_SEARCH_LIMIT):
         messages.add_message(request, messages.WARNING, f'More than {OVERALL_SEARCH_LIMIT} records retrieved. Not executing gene/snp/clinvar search.')
@@ -532,7 +624,7 @@ class TileDBVCFQueryView(APIView):
             df_help = _help_tiledb(request)             
             return Response({'position':1, 'error': str(e)}, status=400)
         elif all([x=='' for x in regions]):
-            regions = pathogenic_vars            
+            regions = PATHOGENIC_VARS            
             messages.add_message(request, messages.WARNING, 'Region unspecified but samples specified, so a list of pathogenic variants from clinvar was substituted.')
             
         # GENERATE QUERY SUMMARY

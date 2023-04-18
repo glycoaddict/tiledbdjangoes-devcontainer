@@ -7,9 +7,9 @@
     <script src="{% static 'js/bootstrap.js' %}"></script>
     <link rel="icon" type="image/x-icon" href="{% static 'img/genomicsDBquerylogo1small.png' %}">
 
-    <!-- data tables incl jquery -->    
-    <link href="https://cdn.datatables.net/v/bs5/jq-3.6.0/jszip-2.5.0/dt-1.13.4/b-2.3.6/b-colvis-2.3.6/b-html5-2.3.6/b-print-2.3.6/fh-3.3.2/sl-1.6.2/datatables.min.css" rel="stylesheet"/> 
-    <script src="https://cdn.datatables.net/v/bs5/jq-3.6.0/jszip-2.5.0/dt-1.13.4/b-2.3.6/b-colvis-2.3.6/b-html5-2.3.6/b-print-2.3.6/fh-3.3.2/sl-1.6.2/datatables.min.js"></script>
+    <!-- data tables incl jquery -->        
+    <link href="{% static 'DataTables/datatables.min.css' %}" rel="stylesheet"/> 
+    <script src="{% static 'DataTables/datatables.min.js' %}"></script>
 
   </head>
 
@@ -23,9 +23,10 @@
           <!-- <svg class="bi me-2" width="40" height="32" role="img" aria-label="GenomicsDB"><use xlink:href="#bootstrap"></use></svg> -->
           <img class="bi me-2" src="{% static 'img/genomicsDBquerylogo1small.png' %}" height="32" />
         </a>
+        <h3>Genomics Query</h3>
   
         <ul class="nav col-12 col-md-auto mb-2 justify-content-center mb-md-0">
-          <li><a href="/query/" class="nav-link px-2 link-dark">Query</a></li>
+          <li><a href="/" class="nav-link px-2 link-dark">Query</a></li>
           <li><a href="/admin" class="nav-link px-2 link-dark">Admin</a></li>
         </ul>
   

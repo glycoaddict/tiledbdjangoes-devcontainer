@@ -5,13 +5,12 @@
 {% endblock %}
 
 {% block content %}
-<div class="container">
-        <h1>Genomics Query v0.2</h1>
+<div class="container">        
         <form action="" method="post" name="query">{% csrf_token %}
             <div class="row mb-3">
                 <div class="col">
                     <label for="samples" class="form-label">Samples</label>
-                    <input type="text" class="form-control" id="samples" name="samples" placeholder="e.g. 0115-0029,0115-0031,0115-0043" {% if query_items %}value="{{ query_items.0.samples }}"{% endif %}/>
+                    <input type="text" class="form-control" id="samples" name="samples" placeholder="e.g. 0001-0001,0002-0001,0003-0003" {% if query_items %}value="{{ query_items.0.samples }}"{% endif %}/>
                 </div>
                 <div class="col">
                     <label for="attrs" class="form-label">Attributes</label>
@@ -26,7 +25,7 @@
             </div>
             <div class="row mb-3">
                 <div class="col">
-                    <label for="genes" class="form-label">Genes</label>
+                    <label for="genes" class="form-label">Genes (overrides Regions)</label>
                     <input type="text" class="form-control" id="genes" name="genes" placeholder="e.g. TUBB" {% if query_items %}value="{{ query_items.0.genes }}"{% endif %} />
                 </div>
             </div>
@@ -46,13 +45,21 @@
             <button class="btn btn-primary me-2 p-2" type="submit" name="submit">Search</button>
             
         </form>
+
+
         {% if query_summary %}
 
         <div class="my-2">
-            <button type="button" class="btn btn-secondary" data-bs-toggle="collapse" data-bs-target="#myCollapse">Show Query Summary</button>
+            <div id="table_function_collapsers" class="btn-group btn-group-sm" role="group">                
+                <button type="button" class="btn btn-outline-primary" data-bs-toggle="collapse" data-bs-target="#querySummaryCollapse">Show Query Summary</button>
+                {% if answer %}
+                <button type="button" class="btn btn-outline-success" data-bs-toggle="collapse" data-bs-target="#customBuilderCollapse">Filter</button>
+                <button type="button" class="btn btn-outline-info" data-bs-toggle="collapse" data-bs-target="#downloadCollapse">Download</button>
+                {% endif %}
+            </div>
             
-            <div class="collapse" id="myCollapse">
-                <div class="card card-body">
+            <div class="collapse" id="querySummaryCollapse">
+                <div class="card card-body border-primary">
                     <div id="query_summary">
                         {{ query_summary | safe }}    
                     </div>
@@ -64,7 +71,6 @@
 
         {% if answer %}
         
-        
         <div>
             <div id="answerTable_holder">
                 {{ answer | safe }}
@@ -74,14 +80,35 @@
         {% endif %}
         
     </div>
+
+<style>
+    table.dataTable tbody td {
+        word-break: break-word;
+        vertical-align: top;
+    }
+
+</style>
+
 {% endblock %}
+
+<!-- See https://datatables.net/reference/option/dom for DataTables dom options -->
 
 {% block scripts %}
 <script type="text/javascript">
 
     $(document).ready(function() {
         $('#T_answertable').DataTable({
-            lengthMenu: [[10, 25, 50, 100, -1], [10, 25, 50, 100, "All"]],
+            dom: '<"#customBuilderCollapse.collapse"<"card card-body border-success"Q>><"#downloadCollapse.collapse"<"card card-body border-info"B>><"row"<"col align-self-start"l>><"row"<"col align-self-start"i><"col align-self-end"p>><rt>',
+             buttons: [
+            'copy', 'csv', 'excel', 'pdf', 'print'
+            ],
+            lengthMenu: [[10, 50, 100, 200, -1], [10, 50, 100, 200, "All"]],
+            fixedHeader: true,
+            scrollX: true,
+            scrollCollapse: true,
+            fixedColumns: true,
+            //columnDefs: [ {targets: '_all', width: '300px'} ],
+            autoWidth: true,
         }
         );
     });
