@@ -102,6 +102,7 @@ RUN pip install requests
 
 RUN pip install django-cors-headers django-rest-auth
 
+# install nodejs just in case in the future we need it for javascript fanciness.
 ARG NODE_VERSION=19.8.1
 ENV NODE_VERSION=$NODE_VERSION
 RUN wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash \    
@@ -114,18 +115,6 @@ RUN wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | 
 
 RUN apt-get install -y npm && \ 
     bash
-
-# RUN curl -sL https://deb.nodesource.com/setup_19.x | bash - && \
-#     apt-get update && \
-#     apt-get install -y nodejs npm && \
-#     bash
-
-WORKDIR /workspaces/devcontainer/vueapp/
-RUN npm install -g @vue/cli
-# RUN npm install vue-router
-# RUN npm install vuex
-# RUN npm install axios
-# RUN npm install vue-axios
 
 WORKDIR /workspaces/devcontainer/djangotiledb_project/
 # WORKDIR /
