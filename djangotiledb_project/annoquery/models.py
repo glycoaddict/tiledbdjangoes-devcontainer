@@ -16,6 +16,8 @@ class Snps(models.Model):
             models.Index(fields=['chr','start'])
         ]
 
+        
+
 class Clinvars(models.Model):
     """Records must be unique based on [alleleid,order]"""
     

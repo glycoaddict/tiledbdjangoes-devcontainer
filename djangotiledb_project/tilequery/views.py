@@ -23,6 +23,7 @@ import datetime
 
 from annoquery.models import Clinvars, Snps, Genes
 from .utils.genotypeops import rowloop_index_a_with_b
+from tilequery.models import NoteModel, NoteHistoryModel
 
 
 logger = logging.getLogger('django')
@@ -65,7 +66,7 @@ DEFAULT_QUERY_ATTRS_LIST = DEFAULT_QUERY_ATTRS.split(',')
 REGION_REGEX = re.compile(r'^chr([1-9]|1[0-9]|2[0-4]|X|Y):\d{1,9}-\d{1,9}$')
 ALPHANUMERIC_REGEX = re.compile(r'^[a-zA-Z0-9]+$')
 
-
+NOTE_FIELDS = ['note_id', 'chr_pos', 'ref_alt', 'note_history']
 
 # pre-fetch the help file
 def prefetch_helper_dataset():
@@ -162,25 +163,7 @@ def index(request, methods=['GET', 'POST']):
         samples_valid = all([(x!='') and (ALPHANUMERIC_REGEX.fullmatch(str(x))) for x in samples]) if samples else False
         genes_valid = all([x!='' for x in genes]) if genes else False 
 
-        # if genes_valid and samples_valid:
-        #     regions = _genes_to_regions_with_validation(genes)
-        #     if not regions or len(regions)==0:
-        #         return _return_with_error_invalid()
-        #     else:
-        #         pass
-        # if regions_valid and samples_valid:
-        #     pass
-        # elif not regions_valid and not samples_valid and not genes_valid:
-        #     return _return_with_error_pregen()
-        # elif not samples_valid:
-        #     return _return_with_error_invalid()
-        # elif not regions_valid and not genes_valid:            
-        #     regions = PATHOGENIC_VARS
-        #     messages.add_message(request, messages.WARNING, 'Region unspecified or invalid but samples specified, so a list of pathogenic variants from clinvar was substituted.')
-        #     pass
-        # else:
-        #     return _return_with_error_invalid()
-
+        # BUSINESS LOGIC
         http, new_regions = business_logic(regions_valid, genes_valid, samples_valid)
         if isinstance(http, HttpResponse):
             return http
@@ -190,35 +173,7 @@ def index(request, methods=['GET', 'POST']):
         # second catch just in case
         if not regions:
             return _return_with_error_invalid()
-
-
         
-        # if not regions_valid and not samples_valid:
-        #     # case 1: no regions and no samples
-        #     w  = '<_query_tiledb> regions must not be empty strings. Returning the possible samples and attributes you may query. Please specify samples and [regions or genes]'
-        #     e = ValueError(w)
-        #     df_help = _help_tiledb(request)             
-        #     return return_with_error(e, query_summary=df_help.style.pipe(style_result_dataframe).to_html())       
-        
-        # elif genes_valid and samples_valid:
-        #     # case 1.1 samples and genes specified but optional regions.
-        #     ## convert genes to regions
-        #     ## continue the search by regions
-        #     ## note that if specified, genes will override regions.
-        #     region_list = genes_to_regions(genes)
-            
-        #     if not region_list:
-        #         return return_with_error(ValueError(f'No genes found for: {genes}.'))
-        #     else:
-        #         regions = region_list.split(',')
-        
-        # elif not regions_valid and not genes_valid and samples_valid:
-        #     # case 1.2: samples are specified but no regions and no genes
-        #     regions = PATHOGENIC_VARS
-        #     messages.add_message(request, messages.WARNING, 'Region unspecified but samples specified, so a list of pathogenic variants from clinvar was substituted.')
-
-        # else:
-        #     return return_with_error(ValueError('Please specify samples and [regions or genes].'))
             
         # GENERATE QUERY SUMMARY
         query_summary = pd.DataFrame([",".join(regions), ",".join(genes), ",".join(samples), ",".join(attrs)], columns=['query'], index=['regions', 'genes', 'samples', 'attributes'])
@@ -281,6 +236,7 @@ def _query_tiledb(request,
                   hidenonvariants_flag=False,
                   genelist_flag=False,
                   )->pd.DataFrame:
+    
 
     flags = {'clinvar_flag':clinvar_flag,
              'hidenonvariants_flag':hidenonvariants_flag,
@@ -297,15 +253,17 @@ def _query_tiledb(request,
 
     messages.add_message(request, messages.INFO, f'{df.shape[0]} records found.')
 
+    # filter to variants only
     if (df.shape[0] > 0) and (hidenonvariants_flag or clinvar_flag or genelist_flag):
         df = df.loc[filter_genotype_to_variants_only_output_mask(df.fmt_GT), :]
         # messages.add_message(request, messages.INFO, 'filtering to non-variants only')
         
-
+    # don't add on Clinvar if too many records
     if OVERALL_SEARCH_LIMIT and (df.shape[0] > OVERALL_SEARCH_LIMIT):
         messages.add_message(request, messages.WARNING, f'More than {OVERALL_SEARCH_LIMIT} records retrieved. Not executing gene/snp/clinvar search.')
         return df
 
+    # add on Clinvar and other annotations
     if (df.shape[0] > 0) and (clinvar_flag or genelist_flag):
         df = _append_tiledb_with_annotation(df, flags=flags)
     
@@ -366,10 +324,12 @@ def _append_tiledb_with_annotation(df,
         return gene_hits
 
     def search_for_snp_and_clinvar(s:pd.Series):
+        '''takes a series of a single row representing a Variant and returns a list of [snp, clinvar]'''
+        # SNPS
         if s.loc['id'] != ".":
             snp = s.loc['id']
         else:
-            # # SNPS
+            # SNPS
             if SNP_SEARCH_FLAG:
                 logger.info(f'search_for_snp_and_clinvar:input `s`: {s.shape}')
                 snp_hits = list(Snps.objects.filter(chr=s.loc[chromosome_label], 
@@ -388,8 +348,7 @@ def _append_tiledb_with_annotation(df,
             else:
                 snp = '-'
 
-        # CLINVAR
-            
+        # CLINVAR            
         clinvar_hits = list(Clinvars.objects.filter(
             chromosome=s.loc['chr_int'],
             start=s.loc[start_label],
@@ -413,7 +372,33 @@ def _append_tiledb_with_annotation(df,
                     clinvar_hits[0].alternateallelevcf, clinvar_hits[0].order]
         else:
             clin = ['-'] * len(CLINVAR_FIELDS)
-        return [snp] + clin
+        return [snp] + clin    
+
+    def get_note_from_variant_row(s: pd.Series) -> "list[str]":
+        note_hits = list(NoteModel.objects.filter(
+            chr=s.loc['chr_int'],
+            start=s.loc[start_label],
+            stop=s.loc[stop_label],
+            alt=s.loc['alt_allele'][0], # because alt_allele is a list of one string
+        ))
+        logger.info(f'get_note_from_variant_row: note_hits length: {len(note_hits)}')
+
+        # print(note_hits)
+
+        if note_hits:
+            note = note_hits[0]
+            note_history = note.get_most_recent_note_history_item()
+            note_details = [
+                note.pk,
+                f'{note.chr}:{note.start}-{note.stop}', 
+                f'{note.ref}->{note.alt}', 
+                note_history.__str__(),
+                ]
+            
+        else:
+            note_details = ['-'] * len(NOTE_FIELDS)
+
+        return note_details
 
     # script starts here
 
@@ -442,11 +427,19 @@ def _append_tiledb_with_annotation(df,
     # count_sorted_index = np.argsort(counts)            
     # return [gene_hit_items[int(count_sorted_index[-1])].gene, gene_hit_items[int(count_sorted_index[-1])].product,]
 
+    # NOTEMODELS 
+    # always match on chr and start and stop and alt allele
+    note_df = pd.DataFrame(
+        df.apply(get_note_from_variant_row, axis=1, result_type='expand').values,
+        columns=NOTE_FIELDS,
+        )
+    df = pd.concat([df, note_df], axis=1)
+
+
     if flags.get('genelist_flag', False):
         res_df_gene = pd.DataFrame(
             df.apply(genelist_lookup_inside_loop, axis=1, result_type='expand').values,
-            columns=['gene'],
-            # columns=['gene','product']
+            columns=['gene'],            
             )
         logger.info('res_df_gene done')
         df = pd.concat([df.reset_index(drop=True), res_df_gene], axis=1)
@@ -466,7 +459,6 @@ def _append_tiledb_with_annotation(df,
 
         logger.info('snp_clinvar_result done')
         df = pd.concat([df, snp_clinvar_result], axis=1)
-
     
     return df
 

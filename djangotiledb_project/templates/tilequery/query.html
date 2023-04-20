@@ -109,6 +109,20 @@
             fixedColumns: true,
             //columnDefs: [ {targets: '_all', width: '300px'} ],
             autoWidth: true,
+            columnDefs: [
+        {
+            targets: [12], // assuming the URL is in the first column
+            render: function (data, type, row, meta) {
+                var url = data;
+                // if url is '-' then don't make it a link, else make a link
+                if (url == '-') {
+                    return url;
+                }                
+                var link = '<a href="/admin/tilequery/notemodel/' + url + '">' + url + '(edit)</a>';
+                return link;
+            }
+        }
+    ]
         }
         );
     });
