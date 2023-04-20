@@ -102,19 +102,18 @@ RUN pip install requests
 
 RUN pip install django-cors-headers django-rest-auth
 
-# install nodejs just in case in the future we need it for javascript fanciness.
-ARG NODE_VERSION=19.8.1
-ENV NODE_VERSION=$NODE_VERSION
-RUN wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash \    
-    && export NVM_DIR="$HOME/.nvm" \
-    && [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" \
-    && [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion" \
-    && nvm install $NODE_VERSION \
-    && nvm alias default $NODE_VERSION \
-    && nvm use default    
+# # install nodejs just in case in the future we need it for javascript fanciness.
+# ARG NODE_VERSION=19.8.1
+# ENV NODE_VERSION=$NODE_VERSION
+# RUN wget -qO- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.3/install.sh | bash \    
+#     && export NVM_DIR="$HOME/.nvm" \
+#     && [ -s "$NVM_DIR/nvm.sh" ] && \. "$NVM_DIR/nvm.sh" \
+#     && [ -s "$NVM_DIR/bash_completion" ] && \. "$NVM_DIR/bash_completion" \
+#     && nvm install $NODE_VERSION \
+#     && nvm alias default $NODE_VERSION \
+#     && nvm use default    
 
-RUN apt-get install -y npm && \ 
-    bash
+RUN apt-get install -y bash
 
 WORKDIR /workspaces/devcontainer/djangotiledb_project/
 # WORKDIR /
