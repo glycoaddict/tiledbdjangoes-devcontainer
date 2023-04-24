@@ -116,9 +116,17 @@
                 var url = data;
                 // if url is '-' then don't make it a link, else make a link
                 if (url == '-') {
-                    return url;
+                    //var link = 'create';
+                    var chr = row[11];
+                    var start_pos = row[6];
+                    var stop_pos = row[7];
+                    var ref_allele = "'" + row[3].match(/(?<=')([^']*)(?=')/)[0] + "'";
+                    var actual_allele = "'" + row[9] + "'";
+                    var link = '<button class="btn btn-primary" onclick="addModel('+chr+','+start_pos+','+stop_pos+','+ref_allele+','+actual_allele+')">create</button>';
+                    // var link = '<btn onclick="addModel('+chr+','+start_pos+','+stop_pos+')">(create)</a>';
+                    return link;
                 }                
-                var link = '<a href="/admin/tilequery/notemodel/' + url + '">' + url + '(edit)</a>';
+                var link = '<a class="btn btn-primary" target="_blank" href="/admin/tilequery/notemodel/' + url + '">' + url + '(edit)</a>';
                 return link;
             }
         }
@@ -126,5 +134,17 @@
         }
         );
     });
+
+    function addModel(chr, start, stop, ref_allele, actual_allele) {
+        var url = '/admin/tilequery/notemodel/add/';
+        const items = {'chr': chr, 'start': start, 'stop': stop, 'ref': ref_allele, 'alt': actual_allele}
+        const queryString = '?' + Object.entries(items)
+            .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+            .join('&');
+        
+        window.open(url + queryString, '_blank')
+
+    }
+
 </script>
 {% endblock %}

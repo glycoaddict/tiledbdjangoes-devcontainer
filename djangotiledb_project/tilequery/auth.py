@@ -24,12 +24,12 @@ class MyBackend(BaseBackend):
         username = request.POST.get("username", username)
         password = request.POST.get("password", password)  
         
-        response = requests.post(API_AUTH_URL, data=json.dumps({"username": username, "password": password}))
         try:
+            response = requests.post(API_AUTH_URL, data=json.dumps({"username": username, "password": password}))
             # Check if the authentication was successful
             response.raise_for_status()  # Raise exception for non-OK response codes
-        except:
-            print('Authentication failed level 1')            
+        except Exception as e:
+            print('Authentication failed level 1', e)
             return None
         
         data = response.json()
