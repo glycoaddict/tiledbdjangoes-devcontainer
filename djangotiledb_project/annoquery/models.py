@@ -61,7 +61,7 @@ class Clinvars(models.Model):
         return super().__repr__() + f'//{self.clinicalsignificance}//{self.genesymbol}//{self.chromosome}:{self.start}-{self.stop}'
     
     class Meta:
-        app_label = 'annoquery'
+        app_label = 'annoquery'                
         indexes = [
             models.Index(fields=['chromosome','start']),
             models.Index(fields=['clinicalsignificance']),

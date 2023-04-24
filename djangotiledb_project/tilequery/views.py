@@ -11,7 +11,7 @@ from rest_framework.permissions import IsAuthenticated
 
 import pandas as pd
 import numpy as np
-from typing import List, Tuple, Dict, Union
+from typing import Iterable, List, Tuple, Dict, Union
 import warnings
 import configparser
 import tiledbvcf as tv
@@ -23,7 +23,7 @@ import datetime
 
 from annoquery.models import Clinvars, Snps, Genes
 from .utils.genotypeops import rowloop_index_a_with_b
-from tilequery.models import NoteModel, NoteHistoryModel
+from tilequery.models import NoteModel
 
 
 logger = logging.getLogger('django')
@@ -33,6 +33,7 @@ config = configparser.ConfigParser()
 config.read('staticfiles/tilequery/config.ini')
 MEMORY_BUDGET_MB=int(config['TILEDB'].get('MEMORY_BUDGET_MB', '32000'))
 URI=str(config['TILEDB'].get('URI', '/mnt/data/tileprism'))
+
 
 # persistent vars:
 PATHOGENIC_VARS = ['chr17:43124028-43124029', 'chr13:32340301-32340301', 'chr7:117559591-117559593', 'chr13:20189547-20189547', 'chr12:112477719-112477719', 'chr16:8811153-8811153', 'chr1:216247118-216247118', 'chr11:66211206-66211206', 'chr19:11116928-11116928', 'chr15:89327201-89327201', 'chrX:154030912-154030912', 'chr10:110964362-110964362', 'chr22:50627165-50627165', 'chr18:51078306-51078306', 'chr9:101427574-101427574', 'chr13:51944145-51944145', 'chr16:23636036-23636037', 'chr11:6617154-6617154', 'chr3:12604200-12604200', 'chr10:87933147-87933147', 'chr11:534289-534289', 'chr16:3243447-3243447', 'chr12:102840507-102840507', 'chr17:7674220-7674220', 'chr18:31592974-31592974', 'chr11:108251026-108251027', 'chr12:76347713-76347714', 'chr7:92501562-92501562', 'chr9:37783993-37783993', 'chr14:23426833-23426833', 'chr15:72346579-72346580', 'chr11:5226774-5226774', 'chr11:47337729-47337730', 'chr4:1801837-1801837', 'chr1:45331219-45331221', 'chr12:32802557-32802557', 'chr2:47803500-47803501', 'chr11:64759751-64759751', 'chr6:43007265-43007265', 'chr5:112839515-112839519', 'chr19:41970405-41970405', 'chr15:66436843-66436843', 'chr7:140801502-140801502', 'chr3:81648854-81648854', 'chr17:42903947-42903947', 'chr2:26195184-26195184', 'chr4:987858-987858', 'chr17:7222272-7222272', 'chr1:9726972-9726972', 'chr7:5986933-5986934', 'chr12:101753470-101753471', 'chr6:32040110-32040110', 'chr3:179234297-179234297', 'chr2:47414421-47414421', 'chr13:31269278-31269278', 'chr10:121520163-121520163', 'chr7:107683453-107683453', 'chr6:136898213-136898213', 'chr16:30737370-30737370', 'chr16:16163078-16163078', 'chr2:28776944-28776944', 'chr3:37047632-37047634', 'chr17:31214524-31214524', 'chr15:80180230-80180230', 'chr17:80118271-80118271', 'chr15:42387803-42387803', 'chr17:80212128-80212128', 'chr15:23645746-23645747', 'chr6:73644583-73644583', 'chr19:18162974-18162974', 'chrX:111685040-111685040', 'chr2:39022774-39022774', 'chr15:90761015-90761015', 'chr18:23536736-23536736', 'chr6:161785820-161785820', 'chr17:50167653-50167653', 'chr9:95172033-95172033', 'chr2:61839695-61839695', 'chr4:3493106-3493107', 'chr9:34649032-34649032', 'chr1:94029515-94029515', 'chr17:6425781-6425781', 'chr4:186274193-186274193', 'chr2:73914835-73914835', 'chr10:54317414-54317414', 'chr19:35831056-35831056', 'chr7:151576412-151576412', 'chr17:35103298-35103298', 'chr19:12649932-12649932', 'chr19:50323685-50323685', 'chr9:108899816-108899816', 'chr11:17531408-17531409', 'chr17:17216394-17216395', 'chr17:3499000-3499000', 'chr11:2167905-2167905', 'chr10:100749771-100749772', 'chrX:153932410-153932410', 'chr14:28767732-28767733', 'chr15:63060899-63060899', 'chr4:15567676-15567676']
@@ -64,7 +65,7 @@ DEFAULT_QUERY_ATTRS = ','.join(['sample_name', 'id', 'alleles', 'fmt_GT', 'conti
 DEFAULT_QUERY_ATTRS_LIST = DEFAULT_QUERY_ATTRS.split(',')
 
 REGION_REGEX = re.compile(r'^chr([1-9]|1[0-9]|2[0-4]|X|Y):\d{1,9}-\d{1,9}$')
-ALPHANUMERIC_REGEX = re.compile(r'^[a-zA-Z0-9]+$')
+ALPHANUMERIC_REGEX = re.compile(r'^[a-zA-Z0-9-]+$')
 
 NOTE_FIELDS = ['note_id', 'chr_pos', 'ref_alt', 'note_history']
 
@@ -74,6 +75,7 @@ def prefetch_helper_dataset():
     if os.path.exists(p):
         DF_COMPOSER = pd.read_pickle(p) 
     else:
+        logger.info('Creating the sample help file. This may take a while.')
         cfg = tv.ReadConfig(memory_budget_mb=MEMORY_BUDGET_MB)
         DS = tv.Dataset(URI, mode='r', cfg=cfg, verbose=False) 
         DF_COMPOSER = pd.DataFrame([f'{",".join(DS.attributes())}', f'{",".join(DS.samples())}'], 
@@ -84,6 +86,13 @@ def prefetch_helper_dataset():
     return DF_COMPOSER
 
 DF_COMPOSER = prefetch_helper_dataset()
+
+DEFAULT_COLUMN_NAMES = dict(chromosome_label =   'contig', 
+                                   start_label      =   'pos_start',
+                                   stop_label      =   'pos_end',
+                                   genotype_label   =   'fmt_GT',
+                                   allele_label     =   'alleles',
+                                   af_label         =   'info_AF',)
 
 # Create your views here.
 
@@ -179,6 +188,7 @@ def index(request, methods=['GET', 'POST']):
         query_summary = pd.DataFrame([",".join(regions), ",".join(genes), ",".join(samples), ",".join(attrs)], columns=['query'], index=['regions', 'genes', 'samples', 'attributes'])
 
         # THE TILEDB SEARCH STARTS HERE        
+        # try:
         try:
             df = _query_tiledb(request, regions=regions, samples=samples, attrs=attrs, 
                                clinvar_flag=clinvar_flag, 
@@ -253,6 +263,29 @@ def _query_tiledb(request,
 
     messages.add_message(request, messages.INFO, f'{df.shape[0]} records found.')
 
+    # add notes
+    if (df.shape[0] > 0):
+        df['actual_allele'] = df.apply(rowloop_index_a_with_b, 
+                                    axis=1, 
+                                    a_label=DEFAULT_COLUMN_NAMES['allele_label'], 
+                                    b_label=DEFAULT_COLUMN_NAMES['genotype_label'],
+                                    use_first_in_a_as_default=True,
+                                    )
+
+        df['lookedup_af'] = df.apply(rowloop_index_a_with_b, 
+                                axis=1, 
+                                a_label=DEFAULT_COLUMN_NAMES['af_label'],
+                                b_label=DEFAULT_COLUMN_NAMES['genotype_label'],
+                                subtract_one=True,
+                                use_first_in_a_as_default=False
+                                )
+
+        df = df.explode(['actual_allele', 'lookedup_af'], ignore_index=True)
+        
+        df['chr_int'] = df.loc[:, DEFAULT_COLUMN_NAMES['chromosome_label']].map(CHR_DICT_STR_TO_INT).astype(int)
+        
+        df = _append_tiledb_with_notes(df)
+
     # filter to variants only
     if (df.shape[0] > 0) and (hidenonvariants_flag or clinvar_flag or genelist_flag):
         df = df.loc[filter_genotype_to_variants_only_output_mask(df.fmt_GT), :]
@@ -263,9 +296,12 @@ def _query_tiledb(request,
         messages.add_message(request, messages.WARNING, f'More than {OVERALL_SEARCH_LIMIT} records retrieved. Not executing gene/snp/clinvar search.')
         return df
 
+    
+
     # add on Clinvar and other annotations
     if (df.shape[0] > 0) and (clinvar_flag or genelist_flag):
         df = _append_tiledb_with_annotation(df, flags=flags)
+
     
     return df
 
@@ -284,12 +320,12 @@ def _help_tiledb(request,
  
 
 def _append_tiledb_with_annotation(df, 
-                                   chromosome_label =   'contig', 
-                                   start_label      =   'pos_start',
-                                   stop_label      =   'pos_end',
-                                   genotype_label   =   'fmt_GT',
-                                   allele_label     =   'alleles',
-                                   af_label         =   'info_AF',
+                                   chromosome_label =   DEFAULT_COLUMN_NAMES['chromosome_label'], 
+                                   start_label      =   DEFAULT_COLUMN_NAMES['start_label'], 
+                                   stop_label       =   DEFAULT_COLUMN_NAMES['stop_label'], 
+                                   genotype_label   =   DEFAULT_COLUMN_NAMES['genotype_label'], 
+                                   allele_label     =   DEFAULT_COLUMN_NAMES['allele_label'], 
+                                   af_label         =   DEFAULT_COLUMN_NAMES['af_label'],
                                    show_only_alt    =   True,
                                    flags            =   {},
                                    ):
@@ -335,7 +371,7 @@ def _append_tiledb_with_annotation(df,
                 snp_hits = list(Snps.objects.filter(chr=s.loc[chromosome_label], 
                                                     start=s.loc[start_label]).filter(
                                                         stop=s.loc[stop_label],
-                                                        alt=s.loc['alt_allele'],
+                                                        alt=s.loc['actual_allele'],
                                     )
                                 )
                 logger.info(f'search_for_snp_and_clinvar: snp_hits length: {len(snp_hits)}')
@@ -353,7 +389,7 @@ def _append_tiledb_with_annotation(df,
             chromosome=s.loc['chr_int'],
             start=s.loc[start_label],
             stop=s.loc[stop_label],
-            alternateallelevcf=s.loc['alt_allele'],
+            alternateallelevcf=s.loc['actual_allele'],
         ))
         logger.info(f'search_for_snp_and_clinvar: clinvar_hits length: {len(clinvar_hits)}')
         
@@ -374,66 +410,38 @@ def _append_tiledb_with_annotation(df,
             clin = ['-'] * len(CLINVAR_FIELDS)
         return [snp] + clin    
 
-    def get_note_from_variant_row(s: pd.Series) -> "list[str]":
-        note_hits = list(NoteModel.objects.filter(
-            chr=s.loc['chr_int'],
-            start=s.loc[start_label],
-            stop=s.loc[stop_label],
-            alt=s.loc['alt_allele'][0], # because alt_allele is a list of one string
-        ))
-        logger.info(f'get_note_from_variant_row: note_hits length: {len(note_hits)}')
-
-        # print(note_hits)
-
-        if note_hits:
-            note = note_hits[0]
-            note_history = note.get_most_recent_note_history_item()
-            note_details = [
-                note.pk,
-                f'{note.chr}:{note.start}-{note.stop}', 
-                f'{note.ref}->{note.alt}', 
-                note_history.__str__(),
-                ]
-            
-        else:
-            note_details = ['-'] * len(NOTE_FIELDS)
-
-        return note_details
+    
 
     # script starts here
 
     df = df.copy()
 
-    # parse the alleles and GT into set of alt genotypes, padding extra cells with with np.nan
-    # gts = convert_pd_series_of_arrays_to_padded_np_array(df.loc[:, genotype_label])
-    # als = convert_pd_series_of_arrays_to_padded_np_array(df.loc[:, allele_label])
-    alt_allele_lists = df.apply(rowloop_index_a_with_b, axis=1, a_label=allele_label, b_label=genotype_label)
-    df['alt_allele'] = alt_allele_lists
+    # # parse the alleles and GT into set of alt genotypes, padding extra cells with with np.nan
+    # # gts = convert_pd_series_of_arrays_to_padded_np_array(df.loc[:, genotype_label])
+    # # als = convert_pd_series_of_arrays_to_padded_np_array(df.loc[:, allele_label])
+    # alt_allele_lists = df.apply(rowloop_index_a_with_b, axis=1, a_label=allele_label, b_label=genotype_label)
+    # df['actual_allele'] = alt_allele_lists
 
-    alt_af_lists = df.apply(rowloop_index_a_with_b, axis=1, a_label=af_label, b_label=genotype_label, subtract_one=True)
-    df['alt_af'] = alt_af_lists
+    # # convert the alt allele to an index in the AF list
+
+    # alt_af_lists = df.apply(rowloop_index_a_with_b, axis=1, a_label=af_label, b_label=genotype_label, subtract_one=True)
+    # df['lookedup_af'] = alt_af_lists
 
     ### remove rows with NO ALT GENOTYPE. The assumption is that it will be a normal phenotype so not interesting
     if show_only_alt:
-        df.dropna(axis=0, how='any', subset='alt_allele', inplace=True)
+        df.dropna(axis=0, how='any', subset='actual_allele', inplace=True)
         if df.shape[0] == 0:
             return df
         
     
-    df['chr_int'] = df.loc[:, chromosome_label].map(CHR_DICT_STR_TO_INT)
+    # df['chr_int'] = df.loc[:, chromosome_label].map(CHR_DICT_STR_TO_INT)
     
     # gene_hit_names = np.array([g.gene for g in gene_hit_items])
     # unique_hits, indices, counts = np.unique(gene_hit_names, return_index=True, return_counts=True)
     # count_sorted_index = np.argsort(counts)            
     # return [gene_hit_items[int(count_sorted_index[-1])].gene, gene_hit_items[int(count_sorted_index[-1])].product,]
 
-    # NOTEMODELS 
-    # always match on chr and start and stop and alt allele
-    note_df = pd.DataFrame(
-        df.apply(get_note_from_variant_row, axis=1, result_type='expand').values,
-        columns=NOTE_FIELDS,
-        )
-    df = pd.concat([df, note_df], axis=1)
+    
 
 
     if flags.get('genelist_flag', False):
@@ -445,7 +453,7 @@ def _append_tiledb_with_annotation(df,
         df = pd.concat([df.reset_index(drop=True), res_df_gene], axis=1)
     
     # explodes more than one nonzero allele to multiple lines, because rsid and clinvar search will require the alt allele
-    df = df.explode(['alt_allele', 'alt_af']).reset_index(drop=True)
+    df = df.explode(['actual_allele', 'lookedup_af'], ignore_index=True)
 
     if flags.get('clinvar_flag', False):
         # apply a search limit so as not to make the user wait for so long, and also avoid a mistakenly large query.
@@ -459,6 +467,68 @@ def _append_tiledb_with_annotation(df,
 
         logger.info('snp_clinvar_result done')
         df = pd.concat([df, snp_clinvar_result], axis=1)
+
+
+    return df
+
+
+def _append_tiledb_with_notes(df: pd.DataFrame, 
+                                   chromosome_label =   DEFAULT_COLUMN_NAMES['chromosome_label'], 
+                                   start_label      =   DEFAULT_COLUMN_NAMES['start_label'], 
+                                   stop_label       =   DEFAULT_COLUMN_NAMES['stop_label'], 
+                                   genotype_label   =   DEFAULT_COLUMN_NAMES['genotype_label'], 
+                                   allele_label     =   DEFAULT_COLUMN_NAMES['allele_label'], 
+                                   af_label         =   DEFAULT_COLUMN_NAMES['af_label'],
+                                   show_only_alt    =   True,
+                                   flags            =   {},
+                                   ):
+
+    def get_note_from_variant_row(s: pd.Series) -> "list[str]":
+
+        chr_used = (s.loc['chr_int'])
+        start_used = (s.loc[start_label])
+        stop_used = (s.loc[stop_label])
+        alt_used = s.loc['actual_allele']
+        if isinstance(alt_used, Iterable):
+            alt_used = next(iter(alt_used))
+
+        note_hits = list(NoteModel.objects.filter(
+                chr=chr_used,
+                start=start_used,
+                stop=stop_used,
+                alt=alt_used,
+            ))
+        
+        # logger.info(f'get_note_from_variant_row: note_hits length: {len(note_hits)}')
+
+        # print(chr_used,start_used,stop_used,type(alt_used),note_hits)
+
+        if note_hits:
+            note = note_hits[0]
+            note_history = note.get_most_recent_note_history_with_history_hint()
+            note_details = [
+                note.pk,
+                f'{note.chr}:{note.start}-{note.stop}', 
+                f'{note.ref}->{note.alt}', 
+                note_history.__str__(),
+                ]
+            
+        else:
+            note_details = ['-'] * len(NOTE_FIELDS)
+
+        return note_details
+
+    # NOTEMODELS 
+    df = df.copy()
+    
+    df['chr_int'] = df.loc[:, chromosome_label].map(CHR_DICT_STR_TO_INT)
+    # always match on chr and start and stop and alt allele
+    note_df = pd.DataFrame(
+        df.apply(get_note_from_variant_row, axis=1, result_type='expand').values,
+        columns=NOTE_FIELDS,
+        index=df.index,
+        )
+    df = pd.concat([df, note_df], axis=1)
     
     return df
 
@@ -570,7 +640,7 @@ generic_cell = {
 
 def style_result_dataframe(styler):
     styler.set_table_attributes('class="table"')    
-    styler.set_table_styles([generic_cell, cell_hover], overwrite=True)
+    styler.set_table_styles([generic_cell, cell_hover], overwrite=True)        
     return styler
 
 def dataframe_common_final_reformat(df):
