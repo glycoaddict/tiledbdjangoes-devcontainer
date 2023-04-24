@@ -16,7 +16,11 @@ services:
       - type: bind
         source: /home/choosf/devcontainer/djangotiledb_project-prod
         target: /workspaces/devcontainer/djangotiledb_project
-    command: ["sleep", "infinity"]
+      - type: bind
+        source: /home/choosf/users_notes_sql
+        target: /workspaces/sqlite3
+    command: python manage.py runserver 0.0.0.0:8000
+    # command: ["sleep", "infinity"]
     env_file:
       - .env.dev
     depends_on:
@@ -37,7 +41,10 @@ services:
       - type: bind
         source: /home/choosf/devcontainer/djangotiledb_project
         target: /workspaces/devcontainer/djangotiledb_project
-    command: ["sleep", "infinity"]
+      - type: bind
+        source: /home/choosf/users_notes_sql
+        target: /workspaces/sqlite3
+    command: python manage.py runserver 0.0.0.0:8001
     env_file:
       - .env.dev
     depends_on:
