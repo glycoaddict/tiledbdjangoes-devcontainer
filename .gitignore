@@ -133,3 +133,4 @@ dmypy.json
 staticfiles/
 .env*
 postgres_data/
+postgres_data - Copy/

@@ -11,7 +11,8 @@
 			"extensions": [
 				"ms-python.python",
 				"GitHub.copilot",
-				"Vue.volar"
+				"Vue.volar",
+				"ms-azuretools.vscode-docker"
 			]
 		}
 	},

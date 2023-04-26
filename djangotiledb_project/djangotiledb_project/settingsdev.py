@@ -22,6 +22,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 
 # SECURITY WARNING: keep the secret key used in production secret!
 SECRET_KEY = os.environ['SECRET_KEY']
+ANNODB_PW = os.environ['ANNODB_SECRET_PW']
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -96,7 +97,7 @@ DATABASES = {
         'ENGINE': 'django.db.backends.postgresql',
         'NAME': 'annodb',
         'USER': 'prism1',
-        'PASSWORD': 'iDvbooTZ7NkASZAlTL9k',
+        'PASSWORD': ANNODB_PW,
         'HOST': 'anno-db',
         'PORT': '5432',
     }

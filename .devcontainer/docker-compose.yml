@@ -16,7 +16,7 @@ services:
         source: c:/Users/choosf/Documents/SECURE/PRISM/external_databases
         target: /mnt/data/external_databases
       - type: bind
-        source: c:/Users/choosf/Documents/pyprojects/alltiledbs/devcontainer/djangotiledb_project/db.sqlite3
+        source: C:\Users\choosf\Documents\pyprojects\alltiledbs\sqlite3\db.sqlite3
         target: /workspaces/sqlite3/db.sqlite3
     # network_mode: service:db
     working_dir: /workspaces/devcontainer/djangotiledb_project/
