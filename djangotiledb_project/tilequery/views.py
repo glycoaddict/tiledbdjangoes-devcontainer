@@ -99,142 +99,136 @@ DEFAULT_COLUMN_NAMES = dict(chromosome_label =   'contig',
 @login_required
 def index(request, methods=['GET', 'POST']): 
 
-    def return_with_error(e:Exception, query_summary=None):
-            warnings.warn(e.__str__())
-            messages.add_message(request, messages.WARNING, e.__str__())
-            context=dict(query_summary=query_summary)
-            return render(request, QUERY_OPTION, context)
-
-    def _return_with_error_pregen():
-        w  = '<_query_tiledb> Malformed search. Returning the possible samples and attributes you may query. Please specify samples and [regions or genes]'
-        e = ValueError(w)
-        df_help = _help_tiledb(request)             
-        return return_with_error(e, query_summary=df_help.style.pipe(style_result_dataframe).to_html())
-
-    def _return_with_error_invalid():
-        return return_with_error(ValueError('Please specify samples and [regions or genes].'))
-
-    def _genes_to_regions_with_validation(genes):
-        region_list_str = genes_to_regions(genes)
-        if not region_list_str:
-            return []
-            # return return_with_error(ValueError(f'No genes found for: {genes}.'))
-        else:
-            return region_list_str.split(',')
-
-    def business_logic(regions_valid, genes_valid, samples_valid) -> Tuple[Union[str,HttpResponse], Union[List[str], None]]:
-        '''This is the business logic for the query.
-
-        invalid queries will return a HttpResponse with an error message
-        valid queries will return a string 'pass' and None or a list of regions
-        
-        '''
-        if genes_valid and samples_valid:
-            regions = _genes_to_regions_with_validation(genes)
-            if (not regions) or (len(regions)==0):
-                return _return_with_error_invalid(), None
-            else:
-                return 'pass', regions
-        if regions_valid and samples_valid:
-            return 'pass', None
-        elif not regions_valid and not samples_valid and not genes_valid:
-            return _return_with_error_pregen(), None
-        elif not samples_valid:
-            return _return_with_error_invalid(), None
-        elif not regions_valid and not genes_valid:            
-            regions = PATHOGENIC_VARS
-            messages.add_message(request, messages.WARNING, 'Region unspecified or invalid but samples specified, so a list of pathogenic variants from clinvar was substituted.')
-            return 'pass', regions
-        else:
-            return _return_with_error_invalid(), None
-
-    
-    
-    
-    if request.method == 'POST':     
-
-        time_start = datetime.datetime.now()
-        
-        regions=request.POST.get('regions').split(',')
-        samples=request.POST.get('samples').split(',')
-        # attrs=request.POST.get('attrs').split(',')
-        attrs=DEFAULT_QUERY_ATTRS_LIST
-        genes=request.POST.get('genes').split(',')
-        clinvar_flag=request.POST.get('clinvar', False)
-        hidenonvariants_flag=request.POST.get('hidenonvariants', False)
-        genelist_flag=request.POST.get('genelist', False)
-
-        # make sure samples is only alphanumeric so it doesn't mess up SQL
-        
-
-        # VALIDATE INPUTS
-        regions_valid = all([(x!='') and (REGION_REGEX.fullmatch(str(x)) is not None) for x in regions]) if regions else False        
-        samples_valid = all([(x!='') and (ALPHANUMERIC_REGEX.fullmatch(str(x))) for x in samples]) if samples else False
-        genes_valid = all([x!='' for x in genes]) if genes else False 
-
-        # BUSINESS LOGIC
-        http, new_regions = business_logic(regions_valid, genes_valid, samples_valid)
-        if isinstance(http, HttpResponse):
-            return http
-        if new_regions:
-            regions = new_regions
-
-        # second catch just in case
-        if not regions:
-            return _return_with_error_invalid()
-        
-            
-        # GENERATE QUERY SUMMARY
-        query_summary = pd.DataFrame([",".join(regions), ",".join(genes), ",".join(samples), ",".join(attrs)], columns=['query'], index=['regions', 'genes', 'samples', 'attributes'])
-
-        # THE TILEDB SEARCH STARTS HERE        
-        # try:
-        try:
-            df = _query_tiledb(request, regions=regions, samples=samples, attrs=attrs, 
-                               clinvar_flag=clinvar_flag, 
-                               hidenonvariants_flag=hidenonvariants_flag,
-                               genelist_flag=genelist_flag,
-                               )
-            df.index.name = 'S/N'
-        except Exception as e:
-            return return_with_error(e, query_summary=query_summary.style.pipe(style_result_dataframe).render())
-
-        df = dataframe_common_final_reformat(df)
-
-        time_end = datetime.datetime.now()
-        elapsed_seconds = (time_end - time_start).seconds
-        query_summary.loc['query_details'] = [f'time={elapsed_seconds} secs | SNP search={SNP_SEARCH_FLAG} | Clinvar search={clinvar_flag} | HideNonVariants={hidenonvariants_flag} | clinvar_limit={CLINVAR_SEARCH_LIMIT} | overall_limit = {OVERALL_SEARCH_LIMIT}'] # type: ignore
-
-        ### STYLE ####       
-        final_content = df.style.pipe(style_result_dataframe).to_html(table_uuid='answertable')
-        ##############
-        context =  dict(answer=final_content, 
-                        query_summary=query_summary.style.pipe(style_result_dataframe).to_html(), 
-                        query_items=query_summary.T.to_dict(orient="records") + [{'clinvar_flag':clinvar_flag, 'genelist_flag':genelist_flag, 'hidenonvariants_flag':hidenonvariants_flag}],
-                        # query_items=query_summary.to_json(orient="records", force_ascii=True),
-                        )
-        return render(request, QUERY_OPTION, context)
-        
+    if request.method == 'POST':
+        return run_main_query(request)
     else:            
         return render(request, QUERY_OPTION)
 
-# class tiledb:
-#     def __init__(self, uri:str=URI, memory_budget_mb:int=MEMORY_BUDGET_MB) -> None:
-#         # load database        
-#         cfg = tv.ReadConfig(memory_budget_mb=memory_budget_mb)
-#         self.ds = tv.Dataset(uri, mode='r', cfg=cfg, verbose=True)   
+def return_with_error(request, e:Exception, query_summary=None):
+        warnings.warn(e.__str__())
+        messages.add_message(request, messages.WARNING, e.__str__())
+        context=dict(query_summary=query_summary)
+        return render(request, QUERY_OPTION, context)
+
+def _return_with_error_pregen(request):
+    w  = '<_query_tiledb> Malformed search. Returning the possible samples and attributes you may query. Please specify samples and [regions or genes]'
+    e = ValueError(w)
+    df_help = _help_tiledb(request)             
+    return return_with_error(request, e, query_summary=df_help.style.pipe(style_result_dataframe).to_html())
+
+def _return_with_error_invalid(request):
+    return return_with_error(request, ValueError('Please specify samples and [regions or genes].'))
+
+def _genes_to_regions_with_validation(genes):
+    region_list_str = genes_to_regions(genes)
+    if not region_list_str:
+        return []
+        # return return_with_error(ValueError(f'No genes found for: {genes}.'))
+    else:
+        return region_list_str.split(',')
+
+def business_logic(request, regions_valid, genes_valid, samples_valid, **kwargs) -> Tuple[Union[str,HttpResponse], Union[List[str], None]]:
+    '''This is the business logic for the query.
+
+    invalid queries will return a HttpResponse with an error message
+    valid queries will return a string 'pass' and None or a list of regions
+    
+    '''
+    genes = kwargs.get('genes', request.POST.get('genes').split(','))
+    if genes_valid and samples_valid:
+        regions = _genes_to_regions_with_validation(genes)
+        if (not regions) or (len(regions)==0):
+            return _return_with_error_invalid(request), None
+        else:
+            return 'pass', regions
+    if regions_valid and samples_valid:
+        return 'pass', None
+    elif not regions_valid and not samples_valid and not genes_valid:
+        return _return_with_error_pregen(request), None
+    elif not samples_valid:
+        return _return_with_error_invalid(request), None
+    elif not regions_valid and not genes_valid:            
+        regions = PATHOGENIC_VARS
+        messages.add_message(request, messages.WARNING, 'Region unspecified or invalid but samples specified, so a list of pathogenic variants from clinvar was substituted.')
+        return 'pass', regions
+    else:
+        return _return_with_error_invalid(request), None
+
+    
+
+def run_main_query(request, api=False):
+    time_start = datetime.datetime.now()
+    
+    regions=request.POST.get('regions').split(',')
+    samples=request.POST.get('samples').split(',')
+    # attrs=request.POST.get('attrs').split(',')
+    attrs=DEFAULT_QUERY_ATTRS_LIST
+    genes=request.POST.get('genes').split(',')
+    clinvar_flag=request.POST.get('clinvar', False)
+    hidenonvariants_flag=request.POST.get('hidenonvariants', False)
+    genelist_flag=request.POST.get('genelist', False)
+
+    # make sure samples is only alphanumeric including dashes so it doesn't mess up SQL
+    
+
+    # VALIDATE INPUTS
+    regions_valid = all([(x!='') and (REGION_REGEX.fullmatch(str(x)) is not None) for x in regions]) if regions else False        
+    samples_valid = all([(x!='') and (ALPHANUMERIC_REGEX.fullmatch(str(x))) for x in samples]) if samples else False
+    genes_valid = all([x!='' for x in genes]) if genes else False 
+
+    # BUSINESS LOGIC        
+    http, new_regions = business_logic(request, regions_valid, genes_valid, samples_valid)        
+    
+    if isinstance(http, HttpResponse):
+        return http
+    if new_regions:
+        regions = new_regions
+
+    # second catch just in case
+    if not regions:
+        return _return_with_error_invalid(request)
+    
         
-#         pass
+    # GENERATE QUERY SUMMARY
+    query_summary = pd.DataFrame([",".join(regions), ",".join(genes), ",".join(samples), ",".join(attrs)], columns=['query'], index=['regions', 'genes', 'samples', 'attributes'])
 
-#     def _query_tiledb(self, regions:List[str],
-#                   samples:Union[None, List[str]],
-#                   attrs:List[str]=['sample_name', 'alleles', 'fmt_GT', 'contig', 'pos_start'],                   
-#                   )->pd.DataFrame:
+    # THE TILEDB SEARCH STARTS HERE        
+    # try:
+    try:
+        df = _query_tiledb(request, regions=regions, samples=samples, attrs=attrs, 
+                            clinvar_flag=clinvar_flag, 
+                            hidenonvariants_flag=hidenonvariants_flag,
+                            genelist_flag=genelist_flag,
+                            )
+        df.index.name = 'S/N'
+    except Exception as e:
+        return return_with_error(request, e, query_summary=query_summary.style.pipe(style_result_dataframe).render())
 
-#         df = self.ds.read(attrs=attrs, regions=regions, samples=samples)
-#         return df
+    df = dataframe_common_final_reformat(df)
 
-# @login_required
+    time_end = datetime.datetime.now()
+    elapsed_seconds = (time_end - time_start).seconds
+    query_summary.loc['query_details'] = [f'time={elapsed_seconds} secs | SNP search={SNP_SEARCH_FLAG} | Clinvar search={clinvar_flag} | HideNonVariants={hidenonvariants_flag} | clinvar_limit={CLINVAR_SEARCH_LIMIT} | overall_limit = {OVERALL_SEARCH_LIMIT}'] # type: ignore
+
+    if not api:
+        return dict(
+            df=df,
+            query_summary=query_summary,            
+        )
+
+    ### STYLE ####       
+    final_content = df.style.pipe(style_result_dataframe).to_html(table_uuid='answertable')
+    ##############
+    context =  dict(answer=final_content, 
+                    query_summary=query_summary.style.pipe(style_result_dataframe).to_html(), 
+                    query_items=query_summary.T.to_dict(orient="records") + [{'clinvar_flag':clinvar_flag, 'genelist_flag':genelist_flag, 'hidenonvariants_flag':hidenonvariants_flag}],
+                    # query_items=query_summary.to_json(orient="records", force_ascii=True),
+                    )
+    return render(request, QUERY_OPTION, context)
+
+    
+    
+
 def _query_tiledb(request,
                   regions:List[str],
                   samples:List[str],
@@ -367,7 +361,7 @@ def _append_tiledb_with_annotation(df,
         else:
             # SNPS
             if SNP_SEARCH_FLAG:
-                logger.info(f'search_for_snp_and_clinvar:input `s`: {s.shape}')
+                # logger.info(f'search_for_snp_and_clinvar:input `s`: {s.shape}')
                 snp_hits = list(Snps.objects.filter(chr=s.loc[chromosome_label], 
                                                     start=s.loc[start_label]).filter(
                                                         stop=s.loc[stop_label],
@@ -669,52 +663,59 @@ class TileDBVCFQueryView(APIView):
 
         logger.info('RAN request with request.data: %s', request.data)
         
-        query_params = request.data
+        # query_params = request.data
 
-        time_start = datetime.datetime.now()
+        # time_start = datetime.datetime.now()
         
-        regions=query_params.get('regions').split(',')
-        samples=query_params.get('samples').split(',')
-        attrs=query_params.get('attrs', DEFAULT_QUERY_ATTRS).split(',')
-        clinvar_flag=query_params.get('clinvar', False)
-        hidenonvariants_flag=query_params.get('hidenonvariants', False)
-        genelist_flag=query_params.get('genelist', False)
+        # regions=query_params.get('regions').split(',')
+        # samples=query_params.get('samples').split(',')
+        # attrs=query_params.get('attrs', DEFAULT_QUERY_ATTRS).split(',')
+        # clinvar_flag=query_params.get('clinvar', False)
+        # hidenonvariants_flag=query_params.get('hidenonvariants', False)
+        # genelist_flag=query_params.get('genelist', False)
         
-        if all([x=='' for x in regions]) and (all([x=='' for x in samples]) if samples else True):
-            w  = '<_query_tiledb> regions:List[str] must not be empty strings. Returning the possible samples and attributes you may query.'
-            e = ValueError(w)
-            df_help = _help_tiledb(request)             
-            return Response({'position':1, 'error': str(e)}, status=400)
-        elif all([x=='' for x in regions]):
-            regions = PATHOGENIC_VARS            
-            messages.add_message(request, messages.WARNING, 'Region unspecified but samples specified, so a list of pathogenic variants from clinvar was substituted.')
+        # if all([x=='' for x in regions]) and (all([x=='' for x in samples]) if samples else True):
+        #     w  = '<_query_tiledb> regions:List[str] must not be empty strings. Returning the possible samples and attributes you may query.'
+        #     e = ValueError(w)
+        #     df_help = _help_tiledb(request)             
+        #     return Response({'position':1, 'error': str(e)}, status=400)
+        # elif all([x=='' for x in regions]):
+        #     regions = PATHOGENIC_VARS            
+        #     messages.add_message(request, messages.WARNING, 'Region unspecified but samples specified, so a list of pathogenic variants from clinvar was substituted.')
             
-        # GENERATE QUERY SUMMARY
-        query_summary = pd.DataFrame([",".join(regions), ",".join(samples), ",".join(attrs)], columns=['query'], index=['regions', 'samples', 'attributes'])
+        # # GENERATE QUERY SUMMARY
+        # query_summary = pd.DataFrame([",".join(regions), ",".join(samples), ",".join(attrs)], columns=['query'], index=['regions', 'samples', 'attributes'])
 
-        # THE TILEDB SEARCH STARTS HERE        
-        try:
-            df = _query_tiledb(request, regions=regions, samples=samples, attrs=attrs, 
-                               clinvar_flag=clinvar_flag, 
-                               hidenonvariants_flag=hidenonvariants_flag,
-                               genelist_flag=genelist_flag,
-                               )
-            df.index.name = 'S/N'
-        except Exception as e:
-            return Response({'position':2, 'error': str(e)}, status=400)
+        # # THE TILEDB SEARCH STARTS HERE        
+        # try:
+        #     df = _query_tiledb(request, regions=regions, samples=samples, attrs=attrs, 
+        #                        clinvar_flag=clinvar_flag, 
+        #                        hidenonvariants_flag=hidenonvariants_flag,
+        #                        genelist_flag=genelist_flag,
+        #                        )
+        #     df.index.name = 'S/N'
+        # except Exception as e:
+        #     return Response({'position':2, 'error': str(e)}, status=400)
 
-        df = dataframe_common_final_reformat(df)
+        # df = dataframe_common_final_reformat(df)
 
-        time_end = datetime.datetime.now()
-        elapsed_seconds = (time_end - time_start).seconds
-        query_summary.loc['query_details'] = [f'time={elapsed_seconds} secs | SNP search={SNP_SEARCH_FLAG} | Clinvar search={clinvar_flag} | HideNonVariants={hidenonvariants_flag} | clinvar_limit={CLINVAR_SEARCH_LIMIT} | overall_limit = {OVERALL_SEARCH_LIMIT}'] # type: ignore
+        # time_end = datetime.datetime.now()
+        # elapsed_seconds = (time_end - time_start).seconds
+        # query_summary.loc['query_details'] = [f'time={elapsed_seconds} secs | SNP search={SNP_SEARCH_FLAG} | Clinvar search={clinvar_flag} | HideNonVariants={hidenonvariants_flag} | clinvar_limit={CLINVAR_SEARCH_LIMIT} | overall_limit = {OVERALL_SEARCH_LIMIT}'] # type: ignore
 
-        ### STYLE ####       
-        final_content = df.style.pipe(style_result_dataframe).to_html()
-        ##############
-        # context =  dict(answer=final_content, 
-        #                 query_summary=query_summary.style.pipe(style_result_dataframe).to_html(), 
-        #                 )
+        # ### STYLE ####       
+        # final_content = df.style.pipe(style_result_dataframe).to_html()
+        # ##############
+        # # context =  dict(answer=final_content, 
+        # #                 query_summary=query_summary.style.pipe(style_result_dataframe).to_html(), 
+        # #                 )
+
+        response_dict = run_main_query(request)
+
+        df = response_dict['df']
+        query_summary = response_dict['query_summary']
+
+        
         return Response({
             'answer':JSONRenderer().render(df),
             'query_summary':JSONRenderer().render(query_summary),

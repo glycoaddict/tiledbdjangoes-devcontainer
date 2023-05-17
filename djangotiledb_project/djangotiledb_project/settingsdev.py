@@ -135,22 +135,25 @@ LOGGING = {
     },
     'handlers': {        
         'file': {
-            'level': 'DEBUG',
-            'class': 'logging.FileHandler',
+            'level': 'INFO',
+            'class': 'logging.handlers.RotatingFileHandler',
             'filename': '/workspaces/devcontainer/debug.log',
             'formatter':'standard',
+            'maxBytes': 1024 * 1024 * 10,    
+            'backupCount': 1,        
         },
-        'infofile' : {
-            'level': 'INFO',
-            'class': 'logging.FileHandler',
-            'filename': '/workspaces/devcontainer/info.log',
-            'formatter':'standard',
-        },
+        # 'infofile' : {
+        #     'level': 'INFO',
+        #     'class': 'logging.FileHandler',
+        #     'filename': '/workspaces/devcontainer/info.log',
+        #     'formatter':'standard',
+        #     # 'maxBytes': 1024 * 1024 * 10,
+        # },
             
     },
     'loggers': {
         'django': {
-            'handlers': ['file', 'infofile'],
+            'handlers': ['file'],
             'level': 'DEBUG',
             'propagate': True,
         },
@@ -175,7 +178,7 @@ USE_TZ = True
 STATIC_URL = '/static/'
 
 STATICFILES_DIRS = [BASE_DIR / "static"]
-STATIC_ROOT = BASE_DIR / "staticfiles" 
+STATIC_ROOT = BASE_DIR / "staticfiles"
 STATICFILES_STORAGE = "django.contrib.staticfiles.storage.StaticFilesStorage"
 
 # Default primary key field type

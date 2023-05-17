@@ -7,8 +7,9 @@ class Snps(models.Model):
     chr = models.CharField(max_length=32)
     start = models.IntegerField()
     stop = models.IntegerField()
-    ref = models.CharField(max_length=64, blank=True, null=True)
-    alt = models.CharField(max_length=64, blank=True, null=True)
+    ref = models.CharField(max_length=100, blank=True, null=True)
+    alt = models.CharField(max_length=100, blank=True, null=True)
+    af = models.CharField(max_length=1000, blank=True, null=True, default=None)
 
     class Meta:
         app_label = 'annoquery'
